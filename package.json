@@ -1,0 +1,21 @@
+{
+  "name": "aiborgz-security",
+  "version": "1.0.0",
+  "description": "AIBORGZ Security Bot — alt detection and ban evasion protection",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "better-sqlite3": "^9.4.3",
+    "canvas": "^2.11.2",
+    "sharp": "^0.33.2",
+    "node-fetch": "^2.7.0",
+    "dotenv": "^16.4.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  }
+}
