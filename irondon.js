@@ -98,6 +98,12 @@ async function askIronDon(userMessage, contextId, username) {
   const history = getHistory(contextId);
   const apiKey  = process.env.OPENROUTER_API_KEY;
 
+  if (!apiKey) {
+    throw new Error('OPENROUTER_API_KEY environment variable is not set');
+  }
+
+  console.log('API key present, length:', apiKey.length, 'starts with:', apiKey.slice(0,8));
+
   const messages = [
     { role: 'system', content: IRON_DON_PROMPT },
     ...history,
