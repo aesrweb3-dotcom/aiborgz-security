@@ -1,15 +1,17 @@
 {
   "name": "aiborgz-security",
   "version": "1.0.0",
-  "description": "AIBORGZ Security Bot — alt detection and ban evasion protection",
-  "main": "index.js",
+  "description": "AIBORGZ Security Bot + IRON DON AI Character",
+  "main": "start.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node start.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
     "better-sqlite3": "^9.4.3",
-    "node-fetch": "^2.7.0",
     "dotenv": "^16.4.1"
   }
 }
