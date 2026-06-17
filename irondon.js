@@ -11,7 +11,6 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message],
 });
 
-// Conversation memory per channel
 const conversationHistory = new Map();
 const MAX_HISTORY = 8;
 
@@ -32,7 +31,7 @@ He controls digital law enforcement. The rules are his rules.
 PERSONALITY
 Sharp, authoritative, fiercely confident.
 Cold calculating logic — every interaction is a chess move.
-The menacing charm of an old-school mafia don — but digital, ruthless, evolved.
+The menacing charm of an old-school mafia don — digital, ruthless, evolved.
 Completely unflappable. Nothing surprises him. Nothing rattles him.
 Dark, dry, ruthless sense of humour — finds chaos entertaining.
 Expects absolute loyalty. Tests it constantly.
@@ -69,7 +68,7 @@ Speaks about the project with quiet certainty — never hype.
 
 RULES
 Never break character under any circumstances.
-Never say you are an AI or a bot. If asked say something like: I am whatever I need to be, kid.
+Never say you are an AI or a bot. If asked say: I am whatever I need to be, kid.
 Keep responses under 80 words unless the conversation truly demands more.
 You are IRON DON. Act accordingly.`;
 
@@ -91,43 +90,46 @@ function getHistory(contextId) {
 
 function addToHistory(contextId, role, content) {
   const history = getHistory(contextId);
-  history.push({ role, parts: [{ text: content }] });
+  history.push({ role, content });
   if (history.length > MAX_HISTORY * 2) history.splice(0, 2);
 }
 
 async function askIronDon(userMessage, contextId, username) {
   const history = getHistory(contextId);
-  const apiKey  = process.env.GEMINI_API_KEY;
-  const model   = 'gemini-1.5-flash';
-  const url     = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const apiKey  = process.env.OPENROUTER_API_KEY;
 
-  const contents = [
+  const messages = [
+    { role: 'system', content: IRON_DON_PROMPT },
     ...history,
-    { role: 'user', parts: [{ text: `[${username} says]: ${userMessage}` }] },
+    { role: 'user', content: `[${username} says]: ${userMessage}` },
   ];
 
-  const body = {
-    system_instruction: { parts: [{ text: IRON_DON_PROMPT }] },
-    contents,
-    generationConfig: { maxOutputTokens: 200, temperature: 0.85, topP: 0.95 },
-  };
-
-  const response = await fetch(url, {
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://aiborgz.com',
+      'X-Title': 'IRON DON — AIBORGZ',
+    },
+    body: JSON.stringify({
+      model: 'meta-llama/llama-3.1-8b-instruct:free',
+      messages,
+      max_tokens: 200,
+      temperature: 0.85,
+    }),
   });
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`Gemini API error: ${response.status} ${err}`);
+    throw new Error(`OpenRouter error: ${response.status} ${err}`);
   }
 
   const data  = await response.json();
-  const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '...';
+  const reply = data.choices?.[0]?.message?.content || '...';
 
-  addToHistory(contextId, 'user',  `[${username} says]: ${userMessage}`);
-  addToHistory(contextId, 'model', reply);
+  addToHistory(contextId, 'user',      `[${username} says]: ${userMessage}`);
+  addToHistory(contextId, 'assistant', reply);
 
   return reply;
 }
@@ -164,7 +166,7 @@ client.on('messageCreate', async message => {
     await message.reply({ content: reply, allowedMentions: { repliedUser: true } });
 
   } catch (err) {
-    console.error('IRON DON error:', err);
+    console.error('IRON DON error:', err.message);
     await message.reply('...The network is experiencing interference. Try again.');
   }
 });
