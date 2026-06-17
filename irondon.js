@@ -119,7 +119,7 @@ async function askIronDon(userMessage, contextId, username) {
       'X-Title': 'IRON DON -- AIBORGZ',
     },
     body: JSON.stringify({
-      model: 'nousresearch/hermes-3-llama-3.1-405b:free',
+      model: 'openai/gpt-oss-20b:free',
       messages,
       max_tokens: 200,
       temperature: 0.85,
