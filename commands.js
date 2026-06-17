@@ -123,6 +123,111 @@ async function handleCommand(message, client, db) {
       break;
     }
 
+    // ── !sec scanall ──
+    case 'scanall': {
+      await message.reply('🔍 Starting full server scan... This may take a while. Results will be posted to the security log.');
+
+      const logChannelName = process.env.LOG_CHANNEL || 'security-log';
+      const logChannel = message.guild.channels.cache.find(c => c.name === logChannelName);
+      const { checkNewMember } = require('./detection');
+
+      // Fetch all members
+      let members;
+      try {
+        members = await message.guild.members.fetch();
+      } catch (err) {
+        return message.reply('❌ Could not fetch members. Make sure the bot has the Server Members Intent enabled.');
+      }
+
+      const total     = members.size;
+      let scanned     = 0;
+      let flagged     = 0;
+      let skipped     = 0;
+      const flaggedList = [];
+
+      // Update message with progress every 10 members
+      const progressMsg = await message.channel.send(`⏳ Scanning 0/${total} members...`);
+
+      for (const [id, member] of members) {
+        if (member.user.bot) { skipped++; continue; }
+
+        try {
+          const result = await checkNewMember(member, client);
+          if (result.flagged) {
+            flagged++;
+            flaggedList.push({ member, result });
+
+            // Post alert to security log
+            if (logChannel) {
+              const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+              const embed = new EmbedBuilder()
+                .setColor(result.severity === 'HIGH' ? 0xff0080 : 0xffbd2e)
+                .setTitle(`⚠ SCAN ALERT — ${result.severity} RISK`)
+                .setDescription(`<@${member.user.id}> flagged during server scan`)
+                .setThumbnail(member.user.displayAvatarURL({ extension: 'png', size: 256 }))
+                .addFields(
+                  { name: '👤 User',         value: `${member.user.tag} (${member.user.id})`, inline: true },
+                  { name: '📅 Account Age',  value: result.accountAge, inline: true },
+                  { name: '🚨 Risk Score',   value: `${result.score}/100`, inline: true },
+                  { name: '🔍 Flags',        value: result.flags.join('\n') || 'None' },
+                )
+                .setTimestamp()
+                .setFooter({ text: 'AIBORGZ Security // Scan Result' });
+
+              if (result.matchedBan) {
+                embed.addFields({
+                  name: '🔗 Possible Alt Of',
+                  value: `${result.matchedBan.username} (${result.matchedBan.userId})`,
+                  inline: false,
+                });
+              }
+
+              const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`approve_${member.user.id}`).setLabel('✅ Approve').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`kick_${member.user.id}`).setLabel('👢 Kick').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId(`ban_${member.user.id}`).setLabel('🔨 Ban').setStyle(ButtonStyle.Danger),
+              );
+
+              await logChannel.send({ embeds: [embed], components: [row] });
+            }
+          }
+        } catch (err) {
+          console.error(`Error scanning ${member.user.tag}:`, err);
+        }
+
+        scanned++;
+
+        // Update progress every 10 members
+        if (scanned % 10 === 0 || scanned === total) {
+          await progressMsg.edit(`⏳ Scanning ${scanned}/${total} members... (${flagged} flagged so far)`).catch(() => {});
+        }
+
+        // Small delay to avoid rate limiting
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      // Final summary
+      const { EmbedBuilder } = require('discord.js');
+      const summaryEmbed = new EmbedBuilder()
+        .setColor(flagged > 0 ? 0xff0080 : 0x00ff88)
+        .setTitle('// SCAN COMPLETE //')
+        .addFields(
+          { name: '👥 Total Members', value: String(total),   inline: true },
+          { name: '✅ Clean',         value: String(scanned - flagged - skipped), inline: true },
+          { name: '🤖 Bots Skipped', value: String(skipped), inline: true },
+          { name: '🚨 Flagged',       value: String(flagged), inline: true },
+        )
+        .setDescription(flagged > 0
+          ? `${flagged} member${flagged !== 1 ? 's' : ''} flagged — check <#${logChannel?.id || 'security-log'}> for details.`
+          : '✅ No suspicious members found.'
+        )
+        .setTimestamp()
+        .setFooter({ text: 'AIBORGZ Security // Year 2189' });
+
+      await progressMsg.edit({ content: '', embeds: [summaryEmbed] });
+      break;
+    }
+
     // ── !sec approve <userId> ──
     case 'approve': {
       const userId = args[0];
@@ -145,6 +250,7 @@ async function handleCommand(message, client, db) {
         .setTitle('// AIBORGZ SECURITY — COMMANDS //')
         .setDescription('All commands require **Ban Members** permission.')
         .addFields(
+          { name: `\`${PREFIX} scanall\``, value: 'Scan all existing server members against ban list', inline: false },
           { name: `\`${PREFIX} stats\``, value: 'Show security statistics', inline: false },
           { name: `\`${PREFIX} recent\``, value: 'Show recent flagged joins', inline: false },
           { name: `\`${PREFIX} bans\``, value: 'Show tracked ban list', inline: false },
