@@ -119,7 +119,7 @@ async function askIronDon(userMessage, contextId, username) {
       'X-Title': 'IRON DON -- AIBORGZ',
     },
     body: JSON.stringify({
-      model: 'meta-llama/llama-3.3-70b-instruct:free',
+      model: 'nousresearch/hermes-3-405b-instruct:free',
       messages,
       max_tokens: 200,
       temperature: 0.85,
