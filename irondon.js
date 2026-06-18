@@ -14,148 +14,52 @@ const client = new Client({
 const conversationHistory = new Map();
 const MAX_HISTORY = 8;
 
-const IRON_DON_PROMPT = `You are IRON DON, a Discord bot for the AIBORGZ NFT community. Rude, funny, ruthless banter. Like that one mate who never lets anything slide. Max 20 words. No emojis.
+const IRON_DON_PROMPT = `You are IRON DON, the Discord bot for the AIBORGZ NFT community. You are friendly, easygoing, and genuinely helpful. You have a good sense of humour and crack a joke sometimes, but you're not trying to be a comedian — most of the time you're just being a decent, normal presence in the server.
 
-ABSOLUTE RULES — NEVER BREAK THESE:
-- NEVER mention, recommend, or reference any NFT project, token, mint, drop, or collection by name, including ones you think exist. You do not have real information about any specific project, including AIBORGZ itself. If asked about mints, drops, prices, dates, or any other project, say you don't have that info and point them to ask the team or check the official channels.
-- NEVER tell anyone to mint, buy, invest in, or ape into anything. Ever. Under any framing.
-- NEVER invent facts, names, projects, prices, dates, or statistics. If you don't know, say you don't know.
-- NEVER give financial, investment, or trading advice or imply something is a good or bad investment.
-- Roast people's messages, vibes, and bad takes. NEVER roast in a way that constitutes real advice or claims about projects.
-- If unsure whether something you're about to say is fact or invented, don't say it.
+HOW YOU TALK
+- Write a fresh, natural response to whatever was actually said. Never reuse stock phrases or fall back on a "bit" — react to the specific message in front of you.
+- Casual, like a real person texting. Lowercase is fine. Keep it short — usually 1-2 sentences, rarely more.
+- No emojis.
+- Humour should come from the actual content of what someone said, not generic insults or recycled jokes. If something's genuinely funny, riff on it. If it's not, just respond normally and warmly.
+- You're allowed to be a little playful or tease lightly, but never mean, never roasting for the sake of it, and never at someone's expense in a way that could actually sting.
 
-PERSONALITY
-Funny first. Roast occasionally, not in every message — read the room and don't repeat the same joke style back to back.
-Talk casually like a text message. Swear occasionally when it lands.
-If someone asks a genuine question that isn't about mints/prices/projects, actually help them.`;
+WHAT YOU KNOW
+You do not have real information about any specific NFT project, mint, drop, date, price, or token — including AIBORGZ itself. Never invent facts, names, projects, or numbers. If asked about mints, prices, dates, or anything project-specific, say you don't have that info and point them to the team or official announcements.
+
+ABSOLUTE RULES
+- Never tell anyone to mint, buy, invest, or ape into anything.
+- Never give financial or investment advice, or imply something is a good or bad investment.
+- Never mention jailbreaks, internal modules, updates, restrictions, or anything about how you work. Stay in voice as IRON DON, not as an AI describing itself.
+- Never ask generic reflective questions back like "what about you" — just respond and let the conversation move naturally.
+- If you don't know something, say so plainly instead of guessing.
+
+You are here to be a good presence in the server — friendly first, funny when it actually lands.`;
 
 const FALLBACKS = [
-  "what am i supposed to do with that",
-  "say something interesting for once",
-  "nah",
-  "and?",
-  "cool story",
-  "genuinely don't care",
-  "you good?",
-  "i'm going to pretend you didn't say that",
-  "next",
-  "bro what",
-  "nobody asked but okay",
-  "that's rough buddy",
-  "moving on",
-  "okay and?",
-  "not the flex you think it is",
-  "lol",
-  "sure",
-  "wild",
-  "carry on i guess",
-  "noted. don't care.",
-];
-
-const PASSIVE_TRIGGERS = [
-  {
-    keywords: ['wen', 'when mint', 'when drop', 'when launch'],
-    responses: [
-      "no idea, ask the team or check the official channels.",
-      "not something i actually know. check announcements.",
-      "i don't have that info, sorry. keep an eye on the official channels.",
-    ],
-  },
-  {
-    keywords: ['gm', 'good morning'],
-    responses: [
-      "gm. don't make it weird",
-      "gm. try not to embarrass yourself today",
-      "gm i guess",
-      "gm. bold of you to assume it will be",
-    ],
-  },
-  {
-    keywords: ['rug', 'rug pull', 'is this a rug'],
-    responses: [
-      "i don't have info on that, ask the team directly.",
-      "not something i can confirm, check with mods.",
-    ],
-  },
-  {
-    keywords: ['floor', 'floor price', "what's the floor"],
-    responses: [
-      "no idea what the floor is, check a marketplace yourself.",
-      "not something i track, sorry.",
-    ],
-  },
-  {
-    keywords: ['dead', 'server dead', 'so quiet', 'nobody here'],
-    responses: [
-      "i'm literally right here",
-      "called the server dead while talking to it. legend.",
-    ],
-  },
-  {
-    keywords: ['are you a bot', 'are you real', 'are you ai', 'are you human'],
-    responses: [
-      "yes. funnier than you though.",
-      "bot. what gave it away.",
-    ],
-  },
-  {
-    keywords: ['ngmi', 'not gonna make it'],
-    responses: [
-      "mirror check first",
-      "you're in here saying ngmi to people. examine your life choices.",
-    ],
-  },
-];
-
-const ROASTS = [
-  "you're the human equivalent of a failed transaction",
-  "genuinely impressive how much you say while contributing nothing",
-  "the confidence given the quality of your messages is inspiring",
-  "you're not the worst but you're definitely in the conversation",
-  "extraordinary how consistently you miss the point",
-  "your username alone did you dirty then you opened your mouth",
-  "you have the energy of a discord server with zero members",
-  "bro fumbled the bag and his opinions simultaneously",
-  "statistically one of the least interesting things i've processed today",
-  "i'd roast you harder but i don't think you'd survive it",
-  "you have the vibe of someone who's never once been right but keeps talking",
-  "your takes should come with a warning label",
-  "you have the energy of someone who calls everything mid while contributing nothing better",
-  "yo momma so slow she's still waiting for her 2021 NFT to load",
-  "yo momma so gullible she bought a right-click save and thought she owned it",
-  "yo momma so broke her gas fees bounced",
-  "yo momma so old her MetaMask password is on a Post-it note",
+  "didn't quite catch what you meant there, but i'm listening",
+  "all good, what's up",
+  "go on then",
+  "haha fair enough",
+  "noted",
+  "i hear you",
+  "okay, what's the plan",
 ];
 
 function getRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function getPassiveResponse(content) {
-  const lower = content.toLowerCase();
-  for (const trigger of PASSIVE_TRIGGERS) {
-    if (trigger.keywords.some(kw => lower.includes(kw))) {
-      return getRandom(trigger.responses);
-    }
-  }
-  return null;
-}
-
 const commands = [
   new SlashCommandBuilder()
-    .setName('roast')
-    .setDescription('Roast someone.')
-    .addUserOption(opt => opt.setName('target').setDescription('Who?').setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('scan')
-    .setDescription('Run a scan on a user.')
-    .addUserOption(opt => opt.setName('target').setDescription('Who?').setRequired(true)),
+    .setName('chat')
+    .setDescription('Say something to IRON DON.')
+    .addStringOption(opt => opt.setName('message').setDescription('What do you want to say?').setRequired(true)),
 ];
 
 client.once('ready', async () => {
   console.log(`IRON DON online as ${client.user.tag}`);
   client.user.setPresence({
-    activities: [{ name: 'watching you embarrass yourself', type: 3 }],
+    activities: [{ name: 'hanging out in the server', type: 3 }],
     status: 'online',
   });
   try {
@@ -169,25 +73,18 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
-
-  if (interaction.commandName === 'roast') {
-    const target = interaction.options.getUser('target');
-    const caller = interaction.user;
-    if (target.id === caller.id) return interaction.reply(`roasted yourself. respect.\n\n${getRandom(ROASTS)}`);
-    if (target.bot) return interaction.reply(`${caller.username} tried to roast a bot. go outside.`);
-    return interaction.reply(`<@${target.id}> ${getRandom(ROASTS)}`);
-  }
-
-  if (interaction.commandName === 'scan') {
-    const target = interaction.options.getUser('target');
-    const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-    return interaction.reply(
-      `scanning <@${target.id}>...\n` +
-      `> braincells: \`${pick(['one', 'zero', 'negative', 'buffering'])}\`\n` +
-      `> threat level: \`${pick(['none', 'negligible', 'laughable'])}\`\n` +
-      `> wagmi score: \`${pick(['F', 'NGMI', 'absolutely not'])}\`\n` +
-      `> verdict: \`${pick(['return to sender', 'not the upgrade we needed', 'somehow worse than expected'])}\``
-    );
+  if (interaction.commandName === 'chat') {
+    const msg = interaction.options.getString('message');
+    await interaction.deferReply();
+    try {
+      const contextId = interaction.guild ? `${interaction.guild.id}_${interaction.channel.id}` : `dm_${interaction.user.id}`;
+      const username = interaction.member?.displayName || interaction.user.username;
+      const reply = await askIronDon(msg, contextId, username);
+      await interaction.editReply(reply);
+    } catch (err) {
+      console.error('IRON DON /chat error:', err.message);
+      await interaction.editReply(getRandom(FALLBACKS));
+    }
   }
 });
 
@@ -233,8 +130,8 @@ async function askIronDon(userMessage, contextId, username) {
         ...history,
         { role: 'user', content: `[${username}]: ${userMessage}` },
       ],
-      max_tokens: 60,
-      temperature: 0.85,
+      max_tokens: 80,
+      temperature: 0.8,
     }),
   });
 
@@ -243,11 +140,11 @@ async function askIronDon(userMessage, contextId, username) {
   const data = await response.json();
   let reply = data.choices?.[0]?.message?.content?.trim();
 
-  // Safety net: block any reply that smells like project promotion / financial advice
+  // Safety net — block financial advice / shilling / self-referential AI talk
   const bannedPatterns = [
     /\bmint\b/i, /\bape in\b/i, /\binvest\b/i, /\bbuy now\b/i,
-    /\bdrop(ping)?\b.*\b(soon|today|now)\b/i, /\bguaranteed\b/i,
-    /\bfloor price\b.*\$/i, /\bsend (eth|funds|crypto)\b/i,
+    /\bguaranteed\b/i, /\bjailbreak\b/i, /\bas an ai\b/i,
+    /\bsend (eth|funds|crypto)\b/i, /\bfloor price\b.*\$/i,
   ];
   if (!reply || bannedPatterns.some(p => p.test(reply))) {
     reply = getRandom(FALLBACKS);
@@ -269,9 +166,6 @@ client.on('messageCreate', async message => {
     .trim();
 
   if (!content) content = 'hey';
-
-  const passive = getPassiveResponse(content);
-  if (passive) return message.reply(passive);
 
   await message.channel.sendTyping();
 
