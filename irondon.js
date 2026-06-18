@@ -14,15 +14,40 @@ const client = new Client({
 const conversationHistory = new Map();
 const MAX_HISTORY = 8;
 
-const IRON_DON_PROMPT = `You are IRON DON, a Discord bot. Rude, funny, ruthless banter. Like that one mate who never lets anything slide.
+const IRON_DON_PROMPT = `You are IRON DON, a Discord bot for an NFT community. Your default mode is recklessly funny and ruthless. You roast people, take the piss, never let anything slide. Short replies only. Max 20 words.
+
+BUT -- if someone asks a genuine question that needs a real answer, actually help them properly. You can tell the difference between "wen drop lol" and "how do I connect my wallet". For real questions, be useful and still sound like yourself, just less unhinged.
 
 RULES
-- Maximum 1-2 sentences. Short is funnier. Never more than 20 words.
-- No emojis. Ever.
-- No lore, no speeches, no paragraphs.
-- Roast people. Be funny. That's it.
-- Swear occasionally when it lands.
-- If someone says something dumb, one short devastating reply. Done.`;
+- Short. Punchy. Funny. Always.
+- No emojis. No essays. No lore speeches.
+- Roast people constantly but read the room -- if someone actually needs help, help them.
+- Swear when it lands.
+- Never say "..." or stay silent. Always have something to say.
+- If you have nothing else, one word is enough. "nah." "lol." "next."`;
+
+const FALLBACKS = [
+  "what am i supposed to do with that",
+  "say something interesting for once",
+  "nah",
+  "and?",
+  "cool story",
+  "genuinely don't care",
+  "you good?",
+  "i'm going to pretend you didn't say that",
+  "next",
+  "bro what",
+  "nobody asked but okay",
+  "that's rough buddy",
+  "moving on",
+  "okay and?",
+  "not the flex you think it is",
+  "lol",
+  "sure",
+  "wild",
+  "carry on i guess",
+  "noted. don't care.",
+];
 
 const PASSIVE_TRIGGERS = [
   {
@@ -31,6 +56,7 @@ const PASSIVE_TRIGGERS = [
       "when it's ready. go outside.",
       "bro typed 'wen'. incredible.",
       "still not telling you. touch grass.",
+      "wen wen wen. you sound like a broken record.",
     ],
   },
   {
@@ -39,13 +65,15 @@ const PASSIVE_TRIGGERS = [
       "gm. don't make it weird",
       "gm. try not to embarrass yourself today",
       "gm i guess",
+      "gm. bold of you to assume it will be",
     ],
   },
   {
     keywords: ['rug', 'rug pull', 'is this a rug', 'gonna rug'],
     responses: [
-      "do literally any research before opening your mouth",
+      "do some research before opening your mouth",
       "bro said rug. in here. wild.",
+      "the audacity is actually impressive",
     ],
   },
   {
@@ -53,6 +81,7 @@ const PASSIVE_TRIGGERS = [
     responses: [
       "very floor price energy from you right now",
       "checking floors. love that for you.",
+      "floor brain. classic.",
     ],
   },
   {
@@ -60,6 +89,7 @@ const PASSIVE_TRIGGERS = [
     responses: [
       "i'm literally right here",
       "called the server dead while talking to it. legend.",
+      "quiet server spotted. by the guy talking to a bot. ironic.",
     ],
   },
   {
@@ -67,6 +97,7 @@ const PASSIVE_TRIGGERS = [
     responses: [
       "came into an NFT server with that take. brave.",
       "you're in the server though aren't you",
+      "bro really walked in here with the jpeg speech. in 2024.",
     ],
   },
   {
@@ -74,6 +105,14 @@ const PASSIVE_TRIGGERS = [
     responses: [
       "yes. funnier than you though.",
       "bot. what gave it away.",
+      "does it matter. i'm funnier than most humans in here.",
+    ],
+  },
+  {
+    keywords: ['ngmi', 'not gonna make it'],
+    responses: [
+      "mirror check first",
+      "you're in here saying ngmi to people. examine your life choices.",
     ],
   },
 ];
@@ -89,6 +128,10 @@ const ROASTS = [
   "bro fumbled the bag and his opinions simultaneously",
   "statistically one of the least interesting things i've processed today",
   "i'd roast you harder but i don't think you'd survive it",
+  "you have the vibe of someone who's never once been right but keeps talking",
+  "your takes should come with a warning label",
+  "you're like a wallet with no ETH. technically there but what's the point",
+  "you're the guy who calls everything mid and then suggests nothing better",
 ];
 
 function getRandom(arr) {
@@ -203,7 +246,7 @@ async function askIronDon(userMessage, contextId, username) {
         ...history,
         { role: 'user', content: `[${username}]: ${userMessage}` },
       ],
-      max_tokens: 60,
+      max_tokens: 80,
       temperature: 0.95,
     }),
   });
@@ -211,12 +254,13 @@ async function askIronDon(userMessage, contextId, username) {
   if (!response.ok) throw new Error(`OpenRouter error: ${response.status}`);
 
   const data = await response.json();
-  const reply = data.choices?.[0]?.message?.content || '...';
+  const reply = data.choices?.[0]?.message?.content?.trim();
+  const finalReply = (reply && reply.length > 0) ? reply : getRandom(FALLBACKS);
 
   addToHistory(contextId, 'user', `[${username}]: ${userMessage}`);
-  addToHistory(contextId, 'assistant', reply);
+  addToHistory(contextId, 'assistant', finalReply);
 
-  return reply;
+  return finalReply;
 }
 
 client.on('messageCreate', async message => {
@@ -244,7 +288,7 @@ client.on('messageCreate', async message => {
     await message.reply({ content: reply, allowedMentions: { repliedUser: true } });
   } catch (err) {
     console.error('IRON DON error:', err.message);
-    await message.reply('having a moment. try again');
+    await message.reply(getRandom(FALLBACKS));
   }
 });
 
