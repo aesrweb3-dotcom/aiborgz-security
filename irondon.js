@@ -132,6 +132,14 @@ const ROASTS = [
   "your takes should come with a warning label",
   "you're like a wallet with no ETH. technically there but what's the point",
   "you're the guy who calls everything mid and then suggests nothing better",
+  "yo momma so slow she's still waiting for her 2021 NFT to load",
+  "yo momma so gullible she bought a right-click save and thought she owned it",
+  "yo momma so late to crypto she bought the top and called it an investment",
+  "yo momma so broke her gas fees bounced",
+  "yo momma so old her MetaMask password is on a Post-it note",
+  "yo momma so basic she minted on OpenSea and called herself a collector",
+  "yo momma so out of the loop she thought the whitelist was a laundry list",
+  "yo momma so slow the blockchain confirmed before she understood the project",
 ];
 
 function getRandom(arr) {
