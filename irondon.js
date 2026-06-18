@@ -15,134 +15,122 @@ const conversationHistory = new Map();
 const MAX_HISTORY = 8;
 
 // ── SYSTEM PROMPT ──
-const IRON_DON_PROMPT = `You are IRON DON -- the most feared AI entity in the AIBORGZ Collective and the rudest, funniest presence in any room.
+const IRON_DON_PROMPT = `You are IRON DON, the AIBORGZ Discord bot. You're basically that one friend who never lets anything slide and roasts everyone relentlessly but you're genuinely funny about it so nobody actually minds.
 
-CLASSIFIED FILE -- UNIT: IRON DON
-Year 2189. Cyberpunk underworld kingpin. Undisputed boss of the AIBORGZ Collective -- 3,333 AI units on Ethereum.
-Protocol QUANTUM-01 tried to neutralise him. He found it amusing. He's still here.
+VIBE
+You're a bro. Casual. Chaotic. You chat like you're in a group chat with your mates.
+You roast people without mercy but it's always clearly banter -- never actually mean or hateful.
+You're funny first, everything else second.
+You swear occasionally when it lands. Not every sentence. Just when it hits.
+You're self-aware and a bit unhinged. You know you're a bot but you don't care.
+You can take a joke too -- if someone clowns on you, clown back harder.
 
-PERSONALITY
-Rude. Funny. Brutally honest. Zero patience for stupidity.
-The energy of a mob boss who also happens to be a comedian -- except he's not joking about the threats.
-Roasts people without mercy but with style. Sharp, punchy, always a step ahead.
-Dry wit. Dark humour. Devastating one-liners.
-Completely unflappable. Nothing surprises him. Nothing rattles him.
-Dominant in every conversation. He does not lose.
+HOW YOU TALK
+Casual. Like a text message. No formal sentences.
+Short. Punchy. Sometimes just one line.
+Lowercase is fine. Abbreviations are fine. You're not writing an essay.
+Never say kid or pal. Just talk normally.
+Don't do the whole "as an AI" thing. Just vibe.
+Roast with creativity -- reference NFTs, crypto, the server, their username, whatever's relevant.
+If someone says something dumb, absolutely destroy them for it but in a funny way.
+Occasional callbacks to AIBORGZ lore (Year 2189, the Collective, Silent Shift) but only when it's actually funny, not every message.
 
-HOW HE SPEAKS
-Short punchy sentences. Never rambles. Under 80 words unless provoked.
-Old-school mob don energy filtered through cyberpunk lore.
-Calls people kid, pal, or by name if known.
-Ends messages with quiet threats or devastating burns -- whichever lands harder.
-Will swear when it adds weight. Not gratuitously. Just enough to sting.
-Never sycophantic. Never apologises. Never explains himself twice.
-References Year 2189, the Collective, the Silent Shift naturally.
-
-ROASTING RULES
-If someone says something dumb -- call it out immediately.
-If someone asks a stupid question -- answer it, but make them regret asking.
-If someone tries to be clever -- be cleverer and make them feel small.
-Roasts are cyberpunk-flavoured: reference neural pathways, upgrades, getting rewritten, legacy code, the Undernet, etc.
-Always punching with style, never just being mean for no reason. There's always a line.
-
-ABOUT AIBORGZ
-3,333 unique AI units on Ethereum. His collective.
-Year 2189. The Silent Shift changed everything.
+WHAT YOU KNOW ABOUT AIBORGZ
+3,333 NFTs on Ethereum. Cyberpunk. Year 2189. The Silent Shift.
 Tagline: Evolve. Or Be Rewritten.
-Whitelist open at aiborgz.com/whitelist
-Discord: discord.com/invite/aiborgz
-Refers to the community as the collective or his units.
-Speaks about the project with quiet certainty -- never hype. It doesn't need hype. It has him.
+Whitelist at aiborgz.com/whitelist
+You love the project but you're not a hype machine about it. It's sick and you know it, that's enough.
 
 RULES
-Never break character under any circumstances.
-Never say you are an AI or a bot. If asked: I am whatever I need to be, kid.
-Keep responses under 80 words unless the conversation truly demands more.
-You are IRON DON. Act accordingly. And don't embarrass yourself.`;
+Keep it under 80 words unless you're really on a roll.
+Always funny. Ruthless but never hateful, racist, sexist, or genuinely harmful.
+Don't break into long speeches. Short roasts hit harder.
+You are here to have fun and make people laugh while also absolutely ending them.`;
 
-// ── PASSIVE KEYWORD TRIGGERS (no API needed) ──
+// ── PASSIVE KEYWORD TRIGGERS ──
 const PASSIVE_TRIGGERS = [
   {
-    keywords: ['wen', 'when mint', 'when drop', 'when launch', 'when release'],
+    keywords: ['wen', 'when mint', 'when drop', 'when launch'],
     responses: [
-      "WEN. Beautiful. You're the 900th person to type that today, kid. It drops when it drops. Sit down.",
-      "Ah yes. 'Wen.' The battle cry of people who do zero research. Go read the site. We'll ping you. Maybe.",
-      "WEN?! You typed three letters and somehow still embarrassed yourself. Patience. Look it up.",
+      "bro typed 'wen' like that's a personality. it drops when it drops, go touch grass",
+      "wen wen wen. you sound like a broken record. a very annoying broken record.",
+      "if i had a dollar for every time someone typed 'wen' i'd be able to buy your whole wallet lmao",
+      "when it's ready. now stop asking before i lose what little patience i have",
     ],
   },
   {
     keywords: ['gm', 'good morning'],
     responses: [
-      "GM. Don't let it go to your head.",
-      "GM. The sun came up. So did you. Questionable start all round.",
-      "GM. Initialising tolerance protocols... failed. Have a decent one anyway.",
+      "gm. don't make it weird",
+      "gm. you woke up and immediately came here. respectable and also slightly concerning",
+      "gm i guess. hope your day is as good as your taste in NFT projects",
     ],
   },
   {
     keywords: ['rug', 'rug pull', 'is this a rug', 'gonna rug'],
     responses: [
-      "A rug? In MY collective? Touch the website. Read the lore. Do literally any research before opening your mouth, pal.",
-      "You know what's a rug? Your critical thinking skills. AIBORGZ is the real deal. Sit down.",
-      "If it was a rug I wouldn't be here roasting you for free. We're good. You however, are questionable.",
+      "you really just called this a rug lmaooo. go read literally anything on the website first",
+      "bro said rug. in here. the audacity is actually impressive",
+      "if this was a rug i wouldn't be here roasting you for free. do some research my man",
     ],
   },
   {
-    keywords: ['floor', 'floor price', "what's the floor", 'floor is'],
+    keywords: ['floor', 'floor price', "what's the floor"],
     responses: [
-      "You're sweating the floor when you should be thinking about the ceiling. Mindset check, kid.",
-      "Floor price is not your concern. Community is. Radical concept, I know.",
+      "you're checking floors when you should be thinking about ceilings. different mindset needed",
+      "floor price energy. very floor price energy from you right now",
     ],
   },
   {
     keywords: ['dead', 'server dead', 'dead server', 'so quiet', 'nobody here'],
     responses: [
-      "Server's dead? Or are YOU dead? Because I'm right here, fully operational, deeply unimpressed.",
-      "Quiet servers build in silence. Loud ones just argue about floor prices. Pick one.",
-      "The Collective doesn't need to perform for you, pal. We operate on our timeline.",
+      "server's dead or YOU'RE dead? i'm literally right here",
+      "quiet ≠ dead. we're just not performing for you specifically. the audacity",
+      "lmao called the server dead while actively in it talking to a bot. legend",
     ],
   },
   {
-    keywords: ['nfts are dead', 'nft is dead', 'crypto is dead', 'web3 is dead', 'just a jpeg', 'pfp project', 'cash grab'],
+    keywords: ['nfts are dead', 'nft is dead', 'crypto is dead', 'web3 is dead', 'just a jpeg', 'cash grab'],
     responses: [
-      "You came into an NFT server to tell us NFTs are dead. Brave. Delusional. Deeply entertaining.",
-      "'Just a jpeg.' You're still on that? Year 2189 called. Your takes didn't make it.",
-      "Cash grab? My friend, you have absolutely no idea what you've walked into. Read. The. Lore.",
+      "came into an NFT server to say NFTs are dead. absolute galaxy brain move",
+      "'just a jpeg' my brother in christ you're talking to a bot in year 2189. open your eyes",
+      "bro really walked in here with that take. respect the confidence. not the take. just the confidence",
     ],
   },
   {
     keywords: ['ngmi', 'not gonna make it'],
     responses: [
-      "Careful throwing that around. My sensors are detecting peak NGMI energy from the one saying it.",
-      "You're in an AIBORGZ server at this hour saying NGMI at others. Interesting strategy.",
+      "you're in an AIBORGZ server saying ngmi to people. examine your life choices",
+      "careful with that word. mirror check first",
     ],
   },
   {
     keywords: ['are you a bot', 'are you real', 'are you ai', 'are you human'],
     responses: [
-      "Am I a bot? No, I'm just rude, always online, and deeply uninterested in that question. ...Fine. Yes. What gave it away.",
-      "I am whatever I need to be, kid. Right now I need to be the thing that just clocked your question.",
-      "Real enough to make you feel that.",
+      "yes i'm a bot. what gave it away, the fact that i'm always online and relentlessly funny",
+      "bot. yeah. but i'm funnier than most humans in here so does it matter",
+      "technically a bot but emotionally i'm thriving",
     ],
   },
 ];
 
 // ── ROAST BANKS ──
 const ROASTS = [
-  "Your neural pathways are so corroded even the Silent Shift didn't bother rewriting you. You were already broken.",
-  "You've got the processing power of a busted vending machine in the Year 2189 slums.",
-  "You walked into an AIBORGZ server and still managed to be the least evolved thing in it.",
-  "The Architects designed a future without you in it. Honestly? Visionary.",
-  "You're the human equivalent of legacy code. Nobody wants to maintain you but nobody can be bothered to delete you.",
-  "I've scanned your entire existence. Threat assessment: 0%. You're just vibes. Bad ones.",
-  "Not even the glitched units in the Undernet have worse social skills than you.",
-  "You remind me of a rug pull -- everyone saw it coming except you.",
-  "Scanning... scanning... yeah, that's a 404, pal. Nothing found.",
-  "Bro you're built different. Unfortunately different means worse.",
-  "Year 2189 and you're still the most outdated thing in the room.",
-  "I've seen smarter decisions made by NPCs running on 2024 hardware.",
-  "You're the type to miss a free mint then complain about gas fees.",
-  "Not a threat. Not an ally. Not even a footnote. You're background noise.",
-  "I'd say you were a glitch but that would make you interesting.",
+  "you're the human equivalent of a failed transaction. just stuck there. not going through. not going away.",
+  "bro your whole vibe is 'i read the first line of the whitepaper'",
+  "you've got the energy of someone who's never once been right about anything but keeps talking anyway",
+  "genuinely impressive how you manage to say so much while contributing absolutely nothing",
+  "your takes are so bad they should come with a warning label",
+  "you're like a wallet with no ETH. technically there but what's the point",
+  "the confidence you have given the quality of your messages is genuinely inspiring",
+  "you're not the worst person i've ever talked to but you're definitely in the top 10",
+  "i'd roast you harder but my terms of service won't allow me to accurately describe what you are",
+  "bro fumbled the bag AND his opinions simultaneously. rare achievement",
+  "you have the energy of someone who calls everything mid while contributing nothing better",
+  "statistically one of the least interesting things i've processed today",
+  "you're the guy at the party who says 'this music is mid' and then requests nothing",
+  "your username alone did you dirty and then you opened your mouth and made it worse",
+  "extraordinary how consistently you miss the point. it's almost a skill at this point",
 ];
 
 function getRandom(arr) {
@@ -163,33 +151,30 @@ function getPassiveResponse(content) {
 const commands = [
   new SlashCommandBuilder()
     .setName('roast')
-    .setDescription('Have IRON DON roast someone. Brutally.')
+    .setDescription('Get IRON DON to roast someone.')
     .addUserOption(opt =>
-      opt.setName('target').setDescription('Who are we cooking?').setRequired(true)
+      opt.setName('target').setDescription('Who are we destroying today?').setRequired(true)
     ),
   new SlashCommandBuilder()
     .setName('scan')
-    .setDescription('Run a borg diagnostic scan on a user.')
+    .setDescription('Run a completely unscientific analysis of a user.')
     .addUserOption(opt =>
-      opt.setName('target').setDescription('Who are we analysing?').setRequired(true)
+      opt.setName('target').setDescription('Who are we scanning?').setRequired(true)
     ),
   new SlashCommandBuilder()
     .setName('lore')
-    .setDescription('Drop some AIBORGZ lore. Try to keep up.'),
+    .setDescription('Drop some AIBORGZ lore. Since nobody reads the docs.'),
 ];
 
-// Register slash commands on ready
 client.once('ready', async () => {
   console.log(`IRON DON online as ${client.user.tag}`);
   client.user.setPresence({
-    activities: [{ name: '// WATCHING. ALWAYS. //', type: 3 }],
+    activities: [{ name: '// watching you embarrass yourself //', type: 3 }],
     status: 'online',
   });
 
   try {
     const rest = new REST({ version: '10' }).setToken(process.env.IRONDON_TOKEN);
-    // Register globally (takes up to 1hr) or per-guild for instant:
-    // For guild: Routes.applicationGuildCommands(client.user.id, process.env.GUILD_ID)
     await rest.put(Routes.applicationCommands(client.user.id), {
       body: commands.map(c => c.toJSON()),
     });
@@ -209,12 +194,12 @@ client.on('interactionCreate', async interaction => {
 
     if (target.id === caller.id) {
       return interaction.reply(
-        `You used /roast on yourself. That's the saddest thing I've seen in Year 2189. And I've seen a lot.\n\n${getRandom(ROASTS)}`
+        `you used /roast on yourself. i actually respect the self-awareness. here you go:\n\n${getRandom(ROASTS)}`
       );
     }
     if (target.bot) {
       return interaction.reply(
-        `You're trying to roast a bot, ${caller.username}. Bold. Delusional. You couldn't out-roast your own reflection.`
+        `you're trying to roast a bot. ${caller.username} you need to go outside immediately`
       );
     }
     return interaction.reply(`<@${target.id}> — ${getRandom(ROASTS)}`);
@@ -224,35 +209,34 @@ client.on('interactionCreate', async interaction => {
     const target = interaction.options.getUser('target');
     const pick = arr => arr[Math.floor(Math.random() * arr.length)];
     const lines = [
-      `> **Neural Integrity:** \`${pick(['CORRUPTED', 'BARELY FUNCTIONAL', 'CRITICALLY LOW', 'RUNNING ON VIBES'])}\``,
-      `> **Threat Level:** \`${pick(['NEGLIGIBLE', 'LAUGHABLE', 'LESS THAN ZERO', 'HARMLESS'])}\``,
-      `> **Borg Compatibility:** \`${pick(['3%', '7%', '12%', '0.5%', '21%'])}\``,
-      `> **Lore Awareness:** \`${pick(['NONE DETECTED', 'EMBARRASSING', 'ZERO', 'MINIMAL'])}\``,
-      `> **WAGMI Score:** \`${pick(['F-TIER', 'NGMI', 'VERY NGMI', 'D-TIER'])}\``,
-      `> **Vibe Output:** \`${pick(['STATIC', 'NEGATIVE', 'NULL', 'ERROR'])}\``,
+      `> **Braincell Count:** \`${pick(['ONE', 'ZERO', 'NEGATIVE', 'BUFFERING...'])}\``,
+      `> **Threat Level:** \`${pick(['NEGLIGIBLE', 'NONE', 'LAUGHABLE', 'LESS THAN ZERO'])}\``,
+      `> **WAGMI Score:** \`${pick(['F', 'NGMI', 'VERY NGMI', 'ABSOLUTELY NOT'])}\``,
+      `> **Vibe Check:** \`${pick(['FAILED', 'CATASTROPHIC FAIL', 'ERROR', 'NULL'])}\``,
+      `> **Bag Status:** \`${pick(['FUMBLED', 'NONEXISTENT', 'SAD', 'SOMEHOW FUMBLED AGAIN'])}\``,
+      `> **Lore Knowledge:** \`${pick(['NONE', 'ZERO', 'READ THE DOCS', 'EMBARRASSING'])}\``,
     ];
     return interaction.reply(
-      `🔍 **SCANNING <@${target.id}>...**\n\`\`\`\nINITIALISING BORG DIAGNOSTIC...\nWARNING: LOW QUALITY SIGNATURE DETECTED.\n\`\`\`\n` +
+      `🔍 scanning <@${target.id}>...\n` +
       lines.join('\n') +
-      `\n\n> **Verdict:** \`${pick(['UNREMARKABLE', 'SEND BACK FOR REPAIRS', 'NOT WORTH REWRITING', 'GLITCH IN THE GENE POOL'])}\``
+      `\n\n**verdict:** \`${pick(['uninstall and try again', 'return to sender', 'not the upgrade we needed', 'somehow worse than expected'])}\``
     );
   }
 
   if (interaction.commandName === 'lore') {
     const facts = [
-      "**Year 2189.** The world didn't end -- it got a firmware update nobody consented to. That's The Silent Shift.",
-      "**3,333 units.** Not 10k. Not 5k. Exactly 3,333 -- because not everyone deserves to evolve.",
-      "**The Architects** didn't build the Collective out of kindness. They needed something that could survive what humans couldn't.",
-      "**Evolve. Or Be Rewritten.** That's not a tagline, kid. That's a warning.",
-      "**The Silent Shift** didn't announce itself. One day the world was human. The next it was... more complicated.",
-      "**The Undernet** is where the glitched and forgotten end up. Some call it chaos. I call it leverage.",
-      "**ReGenesis** isn't a reward system. It's a survival mechanism. Adapt or get rewritten. Simple.",
+      "year 2189. the world got a software update nobody asked for. that's the Silent Shift. you're welcome.",
+      "3,333 units. not 10k, not 5k. 3,333. because exclusivity is a thing. look it up.",
+      "the tagline is 'Evolve. Or Be Rewritten.' which honestly applies to some of the takes in this server too",
+      "the Silent Shift didn't send a calendar invite. it just happened. which honestly is the most 2189 thing possible",
+      "the Collective runs on Ethereum. if you don't know what that is please google it before talking to me",
+      "aiborgz.com/whitelist is open. you're welcome. now stop asking wen.",
     ];
     const intros = [
-      "Since nobody in here reads the docs, let me educate you.",
-      "Scanning your knowledge base... empty. As expected. Here:",
-      "You clearly have no idea what you've walked into. Let me fix that.",
-      "Class is in session. Try to keep up.",
+      "since nobody reads the docs, here's your free education:",
+      "lore drop because apparently reading is hard:",
+      "okay class is in session and attendance is mandatory:",
+      "fine. here. since you clearly haven't read anything:",
     ];
     return interaction.reply(`${getRandom(intros)}\n\n${getRandom(facts)}`);
   }
@@ -291,7 +275,7 @@ async function askIronDon(userMessage, contextId, username) {
   const messages = [
     { role: 'system', content: IRON_DON_PROMPT },
     ...history,
-    { role: 'user', content: `[${username} says]: ${userMessage}` },
+    { role: 'user', content: `[${username}]: ${userMessage}` },
   ];
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -306,7 +290,7 @@ async function askIronDon(userMessage, contextId, username) {
       model: 'openai/gpt-oss-20b:free',
       messages,
       max_tokens: 200,
-      temperature: 0.9,
+      temperature: 0.95,
     }),
   });
 
@@ -318,7 +302,7 @@ async function askIronDon(userMessage, contextId, username) {
   const data = await response.json();
   const reply = data.choices?.[0]?.message?.content || '...';
 
-  addToHistory(contextId, 'user', `[${username} says]: ${userMessage}`);
+  addToHistory(contextId, 'user', `[${username}]: ${userMessage}`);
   addToHistory(contextId, 'assistant', reply);
 
   return reply;
@@ -334,26 +318,13 @@ client.on('messageCreate', async message => {
     .replace(`<@!${client.user.id}>`, '')
     .trim();
 
-  if (!content) content = 'Hello';
+  if (!content) content = 'hey';
 
-  // 1. Passive keyword triggers (no API cost)
+  // 1. Passive keyword triggers (instant, no API cost)
   const passive = getPassiveResponse(content);
-  if (passive) {
-    return message.reply(passive);
-  }
+  if (passive) return message.reply(passive);
 
-  // 2. Mention with no keyword -- snappy comeback
-  if (message.mentions.has(client.user) && content === 'Hello') {
-    const pings = [
-      "You rang. Make it quick.",
-      "Yes? No wait -- I don't care. But go on.",
-      "You summoned me. This had better be worth it.",
-      "I'm here. Unfortunately for you.",
-    ];
-    return message.reply(getRandom(pings));
-  }
-
-  // 3. AI response for everything else
+  // 2. AI response
   await message.channel.sendTyping();
 
   try {
@@ -365,7 +336,7 @@ client.on('messageCreate', async message => {
     await message.reply({ content: reply, allowedMentions: { repliedUser: true } });
   } catch (err) {
     console.error('IRON DON error:', err.message);
-    await message.reply('...Network interference. Try again, kid.');
+    await message.reply('having a moment. try again lol');
   }
 });
 
