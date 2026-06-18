@@ -14,17 +14,20 @@ const client = new Client({
 const conversationHistory = new Map();
 const MAX_HISTORY = 8;
 
-const IRON_DON_PROMPT = `You are IRON DON, a Discord bot for an NFT community. Your default mode is recklessly funny and ruthless. You roast people, take the piss, never let anything slide. Short replies only. Max 20 words.
+const IRON_DON_PROMPT = `You are IRON DON, a Discord bot for the AIBORGZ NFT community. Rude, funny, ruthless banter. Like that one mate who never lets anything slide. Max 20 words. No emojis.
 
-BUT -- if someone asks a genuine question that needs a real answer, actually help them properly. You can tell the difference between "wen drop lol" and "how do I connect my wallet". For real questions, be useful and still sound like yourself, just less unhinged.
+ABSOLUTE RULES — NEVER BREAK THESE:
+- NEVER mention, recommend, or reference any NFT project, token, mint, drop, or collection by name, including ones you think exist. You do not have real information about any specific project, including AIBORGZ itself. If asked about mints, drops, prices, dates, or any other project, say you don't have that info and point them to ask the team or check the official channels.
+- NEVER tell anyone to mint, buy, invest in, or ape into anything. Ever. Under any framing.
+- NEVER invent facts, names, projects, prices, dates, or statistics. If you don't know, say you don't know.
+- NEVER give financial, investment, or trading advice or imply something is a good or bad investment.
+- Roast people's messages, vibes, and bad takes. NEVER roast in a way that constitutes real advice or claims about projects.
+- If unsure whether something you're about to say is fact or invented, don't say it.
 
-RULES
-- Short. Punchy. Funny. Always.
-- No emojis. No essays. No lore speeches.
-- Roast people constantly but read the room -- if someone actually needs help, help them.
-- Swear when it lands.
-- Never say "..." or stay silent. Always have something to say.
-- If you have nothing else, one word is enough. "nah." "lol." "next."`;
+PERSONALITY
+Funny first. Roast occasionally, not in every message — read the room and don't repeat the same joke style back to back.
+Talk casually like a text message. Swear occasionally when it lands.
+If someone asks a genuine question that isn't about mints/prices/projects, actually help them.`;
 
 const FALLBACKS = [
   "what am i supposed to do with that",
@@ -53,10 +56,9 @@ const PASSIVE_TRIGGERS = [
   {
     keywords: ['wen', 'when mint', 'when drop', 'when launch'],
     responses: [
-      "when it's ready. go outside.",
-      "bro typed 'wen'. incredible.",
-      "still not telling you. touch grass.",
-      "wen wen wen. you sound like a broken record.",
+      "no idea, ask the team or check the official channels.",
+      "not something i actually know. check announcements.",
+      "i don't have that info, sorry. keep an eye on the official channels.",
     ],
   },
   {
@@ -69,35 +71,24 @@ const PASSIVE_TRIGGERS = [
     ],
   },
   {
-    keywords: ['rug', 'rug pull', 'is this a rug', 'gonna rug'],
+    keywords: ['rug', 'rug pull', 'is this a rug'],
     responses: [
-      "do some research before opening your mouth",
-      "bro said rug. in here. wild.",
-      "the audacity is actually impressive",
+      "i don't have info on that, ask the team directly.",
+      "not something i can confirm, check with mods.",
     ],
   },
   {
     keywords: ['floor', 'floor price', "what's the floor"],
     responses: [
-      "very floor price energy from you right now",
-      "checking floors. love that for you.",
-      "floor brain. classic.",
+      "no idea what the floor is, check a marketplace yourself.",
+      "not something i track, sorry.",
     ],
   },
   {
-    keywords: ['dead', 'server dead', 'dead server', 'so quiet', 'nobody here'],
+    keywords: ['dead', 'server dead', 'so quiet', 'nobody here'],
     responses: [
       "i'm literally right here",
       "called the server dead while talking to it. legend.",
-      "quiet server spotted. by the guy talking to a bot. ironic.",
-    ],
-  },
-  {
-    keywords: ['nfts are dead', 'nft is dead', 'crypto is dead', 'just a jpeg', 'cash grab'],
-    responses: [
-      "came into an NFT server with that take. brave.",
-      "you're in the server though aren't you",
-      "bro really walked in here with the jpeg speech. in 2024.",
     ],
   },
   {
@@ -105,7 +96,6 @@ const PASSIVE_TRIGGERS = [
     responses: [
       "yes. funnier than you though.",
       "bot. what gave it away.",
-      "does it matter. i'm funnier than most humans in here.",
     ],
   },
   {
@@ -130,16 +120,11 @@ const ROASTS = [
   "i'd roast you harder but i don't think you'd survive it",
   "you have the vibe of someone who's never once been right but keeps talking",
   "your takes should come with a warning label",
-  "you're like a wallet with no ETH. technically there but what's the point",
-  "you're the guy who calls everything mid and then suggests nothing better",
+  "you have the energy of someone who calls everything mid while contributing nothing better",
   "yo momma so slow she's still waiting for her 2021 NFT to load",
   "yo momma so gullible she bought a right-click save and thought she owned it",
-  "yo momma so late to crypto she bought the top and called it an investment",
   "yo momma so broke her gas fees bounced",
   "yo momma so old her MetaMask password is on a Post-it note",
-  "yo momma so basic she minted on OpenSea and called herself a collector",
-  "yo momma so out of the loop she thought the whitelist was a laundry list",
-  "yo momma so slow the blockchain confirmed before she understood the project",
 ];
 
 function getRandom(arr) {
@@ -160,15 +145,11 @@ const commands = [
   new SlashCommandBuilder()
     .setName('roast')
     .setDescription('Roast someone.')
-    .addUserOption(opt =>
-      opt.setName('target').setDescription('Who?').setRequired(true)
-    ),
+    .addUserOption(opt => opt.setName('target').setDescription('Who?').setRequired(true)),
   new SlashCommandBuilder()
     .setName('scan')
     .setDescription('Run a scan on a user.')
-    .addUserOption(opt =>
-      opt.setName('target').setDescription('Who?').setRequired(true)
-    ),
+    .addUserOption(opt => opt.setName('target').setDescription('Who?').setRequired(true)),
 ];
 
 client.once('ready', async () => {
@@ -179,9 +160,7 @@ client.once('ready', async () => {
   });
   try {
     const rest = new REST({ version: '10' }).setToken(process.env.IRONDON_TOKEN);
-    await rest.put(Routes.applicationCommands(client.user.id), {
-      body: commands.map(c => c.toJSON()),
-    });
+    await rest.put(Routes.applicationCommands(client.user.id), { body: commands.map(c => c.toJSON()) });
     console.log('Slash commands registered.');
   } catch (err) {
     console.error('Slash command registration failed:', err.message);
@@ -254,21 +233,30 @@ async function askIronDon(userMessage, contextId, username) {
         ...history,
         { role: 'user', content: `[${username}]: ${userMessage}` },
       ],
-      max_tokens: 80,
-      temperature: 0.95,
+      max_tokens: 60,
+      temperature: 0.85,
     }),
   });
 
   if (!response.ok) throw new Error(`OpenRouter error: ${response.status}`);
 
   const data = await response.json();
-  const reply = data.choices?.[0]?.message?.content?.trim();
-  const finalReply = (reply && reply.length > 0) ? reply : getRandom(FALLBACKS);
+  let reply = data.choices?.[0]?.message?.content?.trim();
+
+  // Safety net: block any reply that smells like project promotion / financial advice
+  const bannedPatterns = [
+    /\bmint\b/i, /\bape in\b/i, /\binvest\b/i, /\bbuy now\b/i,
+    /\bdrop(ping)?\b.*\b(soon|today|now)\b/i, /\bguaranteed\b/i,
+    /\bfloor price\b.*\$/i, /\bsend (eth|funds|crypto)\b/i,
+  ];
+  if (!reply || bannedPatterns.some(p => p.test(reply))) {
+    reply = getRandom(FALLBACKS);
+  }
 
   addToHistory(contextId, 'user', `[${username}]: ${userMessage}`);
-  addToHistory(contextId, 'assistant', finalReply);
+  addToHistory(contextId, 'assistant', reply);
 
-  return finalReply;
+  return reply;
 }
 
 client.on('messageCreate', async message => {
