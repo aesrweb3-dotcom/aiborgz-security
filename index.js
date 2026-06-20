@@ -34,14 +34,14 @@ client.once('ready', () => {
   setInterval(() => rumbleGate.enforceRumbleRoleIntegrity(client), 10 * 60 * 1000);
 });
 
-// ── RUMBLE ROOM REACTION GATE ──
-client.on('messageReactionAdd', async (reaction, user) => {
-  try {
-    if (reaction.partial) await reaction.fetch();
-    if (user.partial) await user.fetch();
-    await rumbleGate.handleRumbleReaction(reaction, user, client);
-  } catch (err) {
-    console.error('Rumble reaction handler error:', err.message);
+// ── RUMBLE ROOM VERIFY BUTTON ──
+client.on('interactionCreate', async interaction => {
+  if (interaction.isButton() && interaction.customId === 'rumble_verify_button') {
+    try {
+      await rumbleGate.handleRumbleButton(interaction);
+    } catch (err) {
+      console.error('Rumble button handler error:', err.message);
+    }
   }
 });
 
@@ -95,6 +95,7 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (!interaction.isButton()) return;
+  if (interaction.customId === 'rumble_verify_button') return; // handled separately, no permission gate
 
   const [action, userId] = interaction.customId.split('_');
 

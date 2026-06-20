@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const rumbleDb = require('./rumble-database');
 const xVerify = require('./x-verify');
 
@@ -13,10 +13,9 @@ const rumbleCommands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   new SlashCommandBuilder()
-    .setName('rumble-set-entry')
-    .setDescription('Set the entry message and role for the Rumble Room gate (admin only)')
-    .addStringOption(opt => opt.setName('message_id').setDescription('Message ID users react to enter').setRequired(true))
-    .addChannelOption(opt => opt.setName('channel').setDescription('Channel the entry message is in').setRequired(true))
+    .setName('rumble-post-entry')
+    .setDescription('Post the Rumble Room entry message with a Verify button (admin only)')
+    .addChannelOption(opt => opt.setName('channel').setDescription('Channel to post the entry message in').setRequired(true))
     .addRoleOption(opt => opt.setName('role').setDescription('Role granted once verified').setRequired(true))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
@@ -63,26 +62,53 @@ async function handleRumbleCommand(interaction) {
     return;
   }
 
-  if (interaction.commandName === 'rumble-set-entry') {
+  if (interaction.commandName === 'rumble-post-entry') {
     await interaction.deferReply({ ephemeral: true });
-    const messageId = interaction.options.getString('message_id');
     const channel = interaction.options.getChannel('channel');
     const role = interaction.options.getRole('role');
 
+    const settings = rumbleDb.getGuildSettings(interaction.guild.id);
+    if (!settings || !settings.tweet_url) {
+      return interaction.editReply('Set the competition tweet first with /rumble-set-tweet before posting the entry message.');
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0x00e5ff)
+      .setTitle('// RUMBLE ROOM ENTRY //')
+      .setDescription(
+        `Click **Verify on X** below to enter the Rumble Room.\n\n` +
+        `You must:\n` +
+        `1. Follow @${settings.target_x_username}\n` +
+        `2. Like the entry tweet\n` +
+        `3. Retweet the entry tweet\n\n` +
+        `Once verified, you'll automatically get access to this room.`
+      )
+      .setFooter({ text: 'AIBORGZ Security // Rumble Room Gate' });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('rumble_verify_button')
+        .setLabel('Verify on X')
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji('🥊')
+    );
+
+    const sentMessage = await channel.send({ embeds: [embed], components: [row] });
+
     rumbleDb.setGuildSettings(interaction.guild.id, {
-      entry_message_id: messageId,
+      entry_message_id: sentMessage.id,
       entry_channel_id: channel.id,
       rumble_role_id: role.id,
     });
 
-    await interaction.editReply(`Rumble Room entry gate set.\nMessage: ${messageId} in <#${channel.id}>\nRole granted on verify: <@&${role.id}>`);
+    await interaction.editReply(`Entry message posted in <#${channel.id}>. Role granted on verify: <@&${role.id}>`);
     return;
   }
 
   if (interaction.commandName === 'rumble-status') {
     const settings = rumbleDb.getGuildSettings(interaction.guild.id);
     if (!settings) {
-      return interaction.reply({ content: 'Rumble Room gate is not configured yet. Run /rumble-set-tweet and /rumble-set-entry first.', ephemeral: true });
+      return interaction.reply({ content: 'Rumble Room gate is not configured yet. Run /rumble-set-tweet and /rumble-post-entry first.', ephemeral: true });
     }
     const embed = new EmbedBuilder()
       .setColor(0x00e5ff)
@@ -98,50 +124,35 @@ async function handleRumbleCommand(interaction) {
   }
 }
 
-async function handleRumbleReaction(reaction, user, client) {
-  if (user.bot) return;
+// ── BUTTON CLICK — triggers the verify flow ──
+async function handleRumbleButton(interaction) {
+  if (interaction.customId !== 'rumble_verify_button') return;
 
-  const guildId = reaction.message.guild?.id;
+  const user = interaction.user;
+  const guildId = interaction.guild?.id;
   if (!guildId) return;
 
   const settings = rumbleDb.getGuildSettings(guildId);
-  if (!settings || !settings.entry_message_id || !settings.entry_channel_id) return;
-
-  if (reaction.message.id !== settings.entry_message_id) return;
-  if (reaction.message.channel.id !== settings.entry_channel_id) return;
-
-  const existing = rumbleDb.getVerification(user.id, guildId, settings.tweet_url);
-  if (existing && existing.verified) {
-    return;
+  if (!settings || !settings.tweet_url) {
+    return interaction.reply({ content: 'The Rumble Room gate is not configured yet. Contact an admin.', ephemeral: true });
   }
 
-  try {
-    await reaction.users.remove(user.id);
-  } catch (err) {
-    console.warn('Could not remove unverified reaction:', err.message);
+  // Already verified for this tweet? Let them know they're already in.
+  const existing = rumbleDb.getVerification(user.id, guildId, settings.tweet_url);
+  if (existing && existing.verified) {
+    return interaction.reply({ content: 'You\'re already verified for this competition — you should have access to the Rumble Room already.', ephemeral: true });
   }
 
   const verifyUrl = `${BASE_URL}/rumble/start?discordId=${user.id}&guildId=${guildId}`;
 
-  const embed = new EmbedBuilder()
-    .setColor(0xff0080)
-    .setTitle('// RUMBLE ROOM — VERIFICATION REQUIRED //')
-    .setDescription(
-      `You need to verify on X before you can enter the Rumble Room.\n\n` +
-      `Steps:\n` +
-      `1. Follow @${settings.target_x_username || 'AIBORGZ'}\n` +
-      `2. Like and retweet the entry tweet\n` +
-      `3. Click the link below and log in with X to verify\n\n` +
-      `[Verify on X →](${verifyUrl})\n\n` +
-      `Once verified, go back and react to the entry message again.`
-    )
-    .setFooter({ text: 'AIBORGZ Security // Rumble Room Gate' });
-
-  try {
-    await user.send({ embeds: [embed] });
-  } catch (err) {
-    console.warn(`Could not DM ${user.tag}, DMs likely closed:`, err.message);
-  }
+  await interaction.reply({
+    content:
+      `Click the link below to verify on X. It'll check that you follow @${settings.target_x_username}, ` +
+      `and have liked + retweeted the entry tweet.\n\n` +
+      `[**Verify on X →**](${verifyUrl})\n\n` +
+      `Once verified you'll get access automatically — no need to click anything else here.`,
+    ephemeral: true,
+  });
 }
 
 async function enforceRumbleRoleIntegrity(client) {
@@ -171,6 +182,6 @@ async function enforceRumbleRoleIntegrity(client) {
 module.exports = {
   rumbleCommands,
   handleRumbleCommand,
-  handleRumbleReaction,
+  handleRumbleButton,
   enforceRumbleRoleIntegrity,
 };
