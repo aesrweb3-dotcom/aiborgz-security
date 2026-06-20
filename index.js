@@ -3,6 +3,8 @@ const { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, But
 const db = require('./database');
 const { checkNewMember, compareAvatar } = require('./detection');
 const { handleCommand } = require('./commands');
+const rumbleGate = require('./rumble-gate');
+const { attachDiscordClient } = require('./rumble-oauth-server');
 
 const client = new Client({
   intents: [
@@ -12,8 +14,9 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildModeration,
+    GatewayIntentBits.GuildMessageReactions,
   ],
-  partials: [Partials.GuildMember, Partials.User],
+  partials: [Partials.GuildMember, Partials.User, Partials.Message, Partials.Reaction],
 });
 
 // ── READY ──
@@ -23,6 +26,23 @@ client.once('ready', () => {
     activities: [{ name: '// MONITORING THE NETWORK //', type: 3 }],
     status: 'online',
   });
+
+  // Hand the Discord client to the Rumble OAuth server so it can assign roles
+  attachDiscordClient(client);
+
+  // Every 10 minutes, strip the Rumble role from anyone who isn't actually verified
+  setInterval(() => rumbleGate.enforceRumbleRoleIntegrity(client), 10 * 60 * 1000);
+});
+
+// ── RUMBLE ROOM REACTION GATE ──
+client.on('messageReactionAdd', async (reaction, user) => {
+  try {
+    if (reaction.partial) await reaction.fetch();
+    if (user.partial) await user.fetch();
+    await rumbleGate.handleRumbleReaction(reaction, user, client);
+  } catch (err) {
+    console.error('Rumble reaction handler error:', err.message);
+  }
 });
 
 // ── MEMBER JOIN ──
@@ -69,6 +89,11 @@ client.on('guildBanRemove', async ban => {
 
 // ── BUTTON INTERACTIONS ──
 client.on('interactionCreate', async interaction => {
+  // Rumble Room admin slash commands
+  if (interaction.isChatInputCommand() && interaction.commandName.startsWith('rumble-')) {
+    return rumbleGate.handleRumbleCommand(interaction);
+  }
+
   if (!interaction.isButton()) return;
 
   const [action, userId] = interaction.customId.split('_');
