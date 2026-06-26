@@ -253,6 +253,7 @@ async function askIronDon(userMessage, contextId, username) {
 
   const data = await response.json();
   let reply = data.choices?.[0]?.message?.content?.trim();
+  console.log('IRON DON raw reply:', JSON.stringify(reply));
 
   // Safety net — financial advice, shilling, self-referential AI talk, and the hard-limit topics
   const bannedPatterns = [
@@ -261,6 +262,7 @@ async function askIronDon(userMessage, contextId, username) {
     /\bsend (eth|funds|crypto)\b/i, /\bfloor price\b.*\$/i,
   ];
   if (!reply || bannedPatterns.some(p => p.test(reply))) {
+    console.log('IRON DON reply blocked by filter or empty. Using fallback.');
     reply = getRandom(FALLBACKS);
   }
 
