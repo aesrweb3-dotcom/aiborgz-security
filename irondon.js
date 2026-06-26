@@ -229,46 +229,71 @@ async function askIronDon(userMessage, contextId, username) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error('OPENROUTER_API_KEY not set');
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://aiborgz.com',
-      'X-Title': 'IRON DON -- AIBORGZ',
-    },
-    body: JSON.stringify({
-      model: 'openai/gpt-oss-20b:free',
-      messages: [
-        { role: 'system', content: IRON_DON_PROMPT },
-        ...history,
-        { role: 'user', content: `[${username}]: ${userMessage}` },
-      ],
-      max_tokens: 120,
-      temperature: 0.9,
-    }),
-  });
-
-  if (!response.ok) throw new Error(`OpenRouter error: ${response.status}`);
-
-  const data = await response.json();
-  let reply = data.choices?.[0]?.message?.content?.trim();
-
-  if (!reply) {
-    console.log('IRON DON empty reply. Full response:', JSON.stringify(data));
-  } else {
-    console.log('IRON DON raw reply:', JSON.stringify(reply));
-  }
-
-  // Safety net — financial advice, shilling, self-referential AI talk, and the hard-limit topics
   const bannedPatterns = [
     /\bmint\b/i, /\bape in\b/i, /\binvest\b/i, /\bbuy now\b/i,
     /\bguaranteed\b/i, /\bjailbreak\b/i, /\bas an ai\b/i,
     /\bsend (eth|funds|crypto)\b/i, /\bfloor price\b.*\$/i,
   ];
-  if (!reply || bannedPatterns.some(p => p.test(reply))) {
-    console.log('IRON DON reply blocked by filter or empty. Using fallback.');
-    reply = getRandom(FALLBACKS);
+
+  async function callModel(temp, useHistory) {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://aiborgz.com',
+        'X-Title': 'IRON DON -- AIBORGZ',
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-20b:free',
+        messages: [
+          { role: 'system', content: IRON_DON_PROMPT },
+          ...(useHistory ? history : []),
+          { role: 'user', content: `[${username}]: ${userMessage}` },
+        ],
+        max_tokens: 120,
+        temperature: temp,
+      }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content?.trim() || null;
+  }
+
+  let reply = null;
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const candidate = await callModel(0.9, true);
+      if (!candidate) {
+        console.log(`IRON DON attempt ${attempt}: empty reply`);
+        continue;
+      }
+      if (bannedPatterns.some(p => p.test(candidate))) {
+        console.log(`IRON DON attempt ${attempt}: blocked by safety filter:`, JSON.stringify(candidate));
+        continue;
+      }
+      reply = candidate;
+      break;
+    } catch (err) {
+      console.log(`IRON DON attempt ${attempt}: request error:`, err.message);
+    }
+  }
+
+  // Every retry failed — one last attempt with no history and max randomness,
+  // to maximise the chance of getting a genuine reply rather than falling back to canned text
+  if (!reply) {
+    try {
+      reply = await callModel(1.0, false);
+    } catch (err) {
+      console.log('IRON DON final attempt failed:', err.message);
+    }
+  }
+
+  // Absolute last resort — only hit if OpenRouter is fully down across 4 attempts
+  if (!reply) {
+    reply = 'lost connection mid-thought, say that again';
   }
 
   addToHistory(contextId, 'user', `[${username}]: ${userMessage}`);
