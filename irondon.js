@@ -245,7 +245,7 @@ async function askIronDon(userMessage, contextId, username) {
         'X-Title': 'IRON DON -- AIBORGZ',
       },
       body: JSON.stringify({
-        model: 'openai/gpt-oss-20b:free',
+        model: 'deepseek/deepseek-chat',
         messages: [
           { role: 'system', content: IRON_DON_PROMPT },
           ...(useHistory ? history : []),
@@ -268,6 +268,7 @@ async function askIronDon(userMessage, contextId, username) {
       const candidate = await callModel(0.9, true);
       if (!candidate) {
         console.log(`IRON DON attempt ${attempt}: empty reply`);
+        await new Promise(r => setTimeout(r, 400 * attempt));
         continue;
       }
       if (bannedPatterns.some(p => p.test(candidate))) {
@@ -278,6 +279,7 @@ async function askIronDon(userMessage, contextId, username) {
       break;
     } catch (err) {
       console.log(`IRON DON attempt ${attempt}: request error:`, err.message);
+      await new Promise(r => setTimeout(r, 400 * attempt));
     }
   }
 
