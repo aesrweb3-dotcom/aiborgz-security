@@ -244,7 +244,7 @@ async function askIronDon(userMessage, contextId, username) {
         ...history,
         { role: 'user', content: `[${username}]: ${userMessage}` },
       ],
-      max_tokens: 80,
+      max_tokens: 120,
       temperature: 0.9,
     }),
   });
@@ -253,7 +253,12 @@ async function askIronDon(userMessage, contextId, username) {
 
   const data = await response.json();
   let reply = data.choices?.[0]?.message?.content?.trim();
-  console.log('IRON DON raw reply:', JSON.stringify(reply));
+
+  if (!reply) {
+    console.log('IRON DON empty reply. Full response:', JSON.stringify(data));
+  } else {
+    console.log('IRON DON raw reply:', JSON.stringify(reply));
+  }
 
   // Safety net — financial advice, shilling, self-referential AI talk, and the hard-limit topics
   const bannedPatterns = [
