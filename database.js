@@ -1,7 +1,12 @@
 const Database = require('better-sqlite3');
+const fs = require('fs');
 const path = require('path');
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, 'security.db');
+// See holder-database.js for why this exists - better-sqlite3 doesn't create
+// its parent directory, and a missing one throws at require time, taking the
+// whole process down, not just this database.
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new Database(dbPath);
 
 // ── SETUP TABLES ──

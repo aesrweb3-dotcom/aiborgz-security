@@ -1,7 +1,14 @@
 const Database = require('better-sqlite3');
+const fs = require('fs');
 const path = require('path');
 
 const dbPath = process.env.HOLDER_DB_PATH || path.join(__dirname, 'holder-roles.db');
+// better-sqlite3 doesn't create the parent directory itself - if HOLDER_DB_PATH
+// points somewhere like /data that isn't actually mounted as a volume, this
+// throws at require time and takes the whole process down with it. Creating
+// it first makes that impossible either way, whether /data is a real
+// persistent volume or just a normal (non-persistent) container directory.
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new Database(dbPath);
 
 db.exec(`
