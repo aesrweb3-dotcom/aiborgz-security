@@ -112,12 +112,22 @@ client.on('guildBanRemove', async ban => {
 client.on('interactionCreate', async interaction => {
   // Rumble Room admin slash commands
   if (interaction.isChatInputCommand() && interaction.commandName.startsWith('rumble-')) {
-    return rumbleGate.handleRumbleCommand(interaction);
+    try {
+      return await rumbleGate.handleRumbleCommand(interaction);
+    } catch (err) {
+      console.error('Rumble command error:', err.message);
+      return;
+    }
   }
 
   // Holder role admin slash commands
   if (interaction.isChatInputCommand() && interaction.commandName.startsWith('holder-')) {
-    return holderRoles.handleHolderCommand(interaction);
+    try {
+      return await holderRoles.handleHolderCommand(interaction);
+    } catch (err) {
+      console.error('Holder command error:', err.message);
+      return;
+    }
   }
 
   if (!interaction.isButton()) return;

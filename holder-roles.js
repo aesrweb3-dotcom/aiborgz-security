@@ -46,11 +46,13 @@ async function checkAndAssignTier(discordId, guildId, walletAddress, client) {
 
   for (const roleId of allTierRoleIds()) {
     if (roleId !== targetRoleId && member.roles.cache.has(roleId)) {
-      await member.roles.remove(roleId).catch(() => {});
+      await member.roles.remove(roleId).catch(err =>
+        console.error(`Holder roles: failed to remove role ${roleId} from ${discordId}:`, err.message));
     }
   }
   if (targetRoleId && !member.roles.cache.has(targetRoleId)) {
-    await member.roles.add(targetRoleId).catch(() => {});
+    await member.roles.add(targetRoleId).catch(err =>
+      console.error(`Holder roles: failed to add role ${targetRoleId} to ${discordId} - check the bot's role sits above the tier roles in Server Settings > Roles:`, err.message));
   }
 
   return { balance, tier };
@@ -87,8 +89,15 @@ async function handleHolderCommand(interaction) {
       .setEmoji('🔗')
   );
 
-  await channel.send({ embeds: [embed], components: [row] });
-  await interaction.editReply(`Entry message posted in <#${channel.id}>.`);
+  try {
+    await channel.send({ embeds: [embed], components: [row] });
+    await interaction.editReply(`Entry message posted in <#${channel.id}>.`);
+  } catch (err) {
+    console.error('holder-post-verify failed:', err.message);
+    await interaction.editReply(
+      `❌ Could not post there: ${err.message}. Check the bot has View Channel, Send Messages and Embed Links permission in <#${channel.id}>.`
+    );
+  }
 }
 
 async function handleHolderButton(interaction) {
