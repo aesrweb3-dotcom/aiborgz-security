@@ -228,3 +228,53 @@ That's it, no slash command to register for this one. It checks for new sales on
 - Nothing posts: check Railway logs for "OPENSEA_API_KEY or SALES_CHANNEL_ID not set" - one of them is missing or mistyped.
 - "could not find SALES_CHANNEL_ID": IRON DON's bot needs to actually be in that channel with permission to view it and send messages.
 - Old sales flood in on first deploy: shouldn't happen, it starts watching from the moment it first boots, not from the collection's full history. If it does, check the server clock/timezone Railway is running with.
+
+---
+
+# PART 5 - Holder Roles Setup
+
+Holders connect their wallet, sign a free message proving ownership (no transaction, no gas, nothing to approve), and get a Discord role based on how many AIBORGZ they hold. Rechecks every 10 minutes, so buying more or selling moves you to the correct role automatically, not just at the moment you first verified.
+
+Tiers, highest one a holder qualifies for wins, they're never stacked:
+
+| Holdings | Role |
+|---|---|
+| 1+ | LOW THREAT |
+| 5+ | MODERATE THREAT |
+| 10+ | HIGH THREAT |
+| 25+ | SEVERE THREAT |
+| 50+ | CLASSIFIED |
+
+## One-Time Setup
+
+### Step 1 - Create the five roles
+Server Settings → Roles → create all five with whatever colors/names you want (Security Bot app, General Information tab has your Application ID if you need `DISCORD_CLIENT_ID` again). Then get each role's ID: Developer Mode on, right-click each role → Copy Role ID.
+
+### Step 2 - Fill in `.env` / Railway variables
+```
+ROLE_LOW_THREAT=...
+ROLE_MODERATE_THREAT=...
+ROLE_HIGH_THREAT=...
+ROLE_SEVERE_THREAT=...
+ROLE_CLASSIFIED=...
+```
+`AIBORGZ_CONTRACT_ADDRESS` and `ROBINHOOD_RPC_URL` already default correctly in the code, only set them if either ever changes. `BASE_URL` is the same variable the Rumble Room Gate already uses, no need to set it twice.
+
+### Step 3 - Register the slash command
+```
+node deploy-commands.js
+```
+You should see `/holder-post-verify` in the registered list alongside the Rumble commands.
+
+### Step 4 - Post the entry message
+In any channel:
+```
+/holder-post-verify channel:#verify
+```
+This posts an embed with a **Verify Wallet** button. Clicking it DMs/replies with a personal link to connect and sign.
+
+## Troubleshooting
+- Button does nothing / link errors: check `BASE_URL` matches your actual Railway URL exactly, same requirement as the Rumble Room Gate.
+- Verified but no role: that wallet holds 0 AIBORGZ, the page will say so directly instead of silently failing.
+- Role doesn't update after a wallet buys/sells: recheck runs every 10 minutes, not instantly, wait for the next cycle or nudge it by having them click Verify Wallet again.
+- "No wallet found" on the verify page: they need to open the link from a browser with MetaMask (or similar) installed, or from inside their wallet app's own browser, not a browser with no wallet extension at all.

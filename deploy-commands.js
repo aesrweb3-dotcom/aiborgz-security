@@ -1,8 +1,9 @@
 require('dotenv').config();
 const { REST, Routes } = require('discord.js');
 const { rumbleCommands } = require('./rumble-gate');
+const { holderCommands } = require('./holder-roles');
 
-const commands = rumbleCommands.map(c => c.toJSON());
+const commands = [...rumbleCommands, ...holderCommands].map(c => c.toJSON());
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {

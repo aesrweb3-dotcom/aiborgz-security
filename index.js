@@ -5,6 +5,8 @@ const { checkNewMember, compareAvatar } = require('./detection');
 const { handleCommand } = require('./commands');
 const rumbleGate = require('./rumble-gate');
 const { attachDiscordClient } = require('./rumble-oauth-server');
+const holderRoles = require('./holder-roles');
+const { attachDiscordClient: attachHolderClient } = require('./wallet-verify-server');
 
 const client = new Client({
   intents: [
@@ -30,8 +32,16 @@ client.once('ready', () => {
   // Hand the Discord client to the Rumble OAuth server so it can assign roles
   attachDiscordClient(client);
 
+  // Same for the wallet verify server, plus the tier-check function it calls
+  // right after a signature verifies
+  attachHolderClient(client, holderRoles.checkAndAssignTier);
+
   // Every 10 minutes, strip the Rumble role from anyone who isn't actually verified
   setInterval(() => rumbleGate.enforceRumbleRoleIntegrity(client), 10 * 60 * 1000);
+
+  // Every 10 minutes, recheck every verified wallet's balance and move them
+  // to the correct tier role if their holdings changed
+  setInterval(() => holderRoles.enforceHolderRoles(client), 10 * 60 * 1000);
 });
 
 // ── RUMBLE ROOM VERIFY BUTTON ──
@@ -41,6 +51,17 @@ client.on('interactionCreate', async interaction => {
       await rumbleGate.handleRumbleButton(interaction);
     } catch (err) {
       console.error('Rumble button handler error:', err.message);
+    }
+  }
+});
+
+// ── HOLDER ROLE VERIFY BUTTON ──
+client.on('interactionCreate', async interaction => {
+  if (interaction.isButton() && interaction.customId === 'holder_verify_button') {
+    try {
+      await holderRoles.handleHolderButton(interaction);
+    } catch (err) {
+      console.error('Holder button handler error:', err.message);
     }
   }
 });
@@ -94,8 +115,14 @@ client.on('interactionCreate', async interaction => {
     return rumbleGate.handleRumbleCommand(interaction);
   }
 
+  // Holder role admin slash commands
+  if (interaction.isChatInputCommand() && interaction.commandName.startsWith('holder-')) {
+    return holderRoles.handleHolderCommand(interaction);
+  }
+
   if (!interaction.isButton()) return;
   if (interaction.customId === 'rumble_verify_button') return; // handled separately, no permission gate
+  if (interaction.customId === 'holder_verify_button') return; // handled separately, no permission gate
 
   const [action, userId] = interaction.customId.split('_');
 
