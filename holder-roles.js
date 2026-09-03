@@ -10,6 +10,7 @@ const ERC721_ABI = ['function balanceOf(address) view returns (uint256)'];
 // Highest threshold first, used for display order (e.g. the entry embed's
 // tier list) - tiersForBalance() itself doesn't depend on this ordering.
 const TIERS = [
+  { min: 100, name: 'SINGULARITY',    envVar: 'ROLE_SINGULARITY' },
   { min: 50, name: 'CLASSIFIED',      envVar: 'ROLE_CLASSIFIED' },
   { min: 25, name: 'SEVERE THREAT',   envVar: 'ROLE_SEVERE_THREAT' },
   { min: 10, name: 'HIGH THREAT',     envVar: 'ROLE_HIGH_THREAT' },
