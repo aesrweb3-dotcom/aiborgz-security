@@ -35,7 +35,8 @@ router.get('/wallet/start', (req, res) => {
   }
   const state = crypto.randomBytes(16).toString('hex');
   holderDb.storePendingState(state, discordId, guildId);
-  res.send(renderConnectPage(state));
+  const existingWallets = holderDb.getWalletsForDiscordId(discordId).map(w => w.wallet_address);
+  res.send(renderConnectPage(state, existingWallets));
 });
 
 // ── Browser posts the signed message here once the wallet signs it ──
@@ -86,7 +87,7 @@ router.post('/wallet/verify', async (req, res) => {
 
 router.get('/wallet/health', (req, res) => res.json({ status: 'ok' }));
 
-function renderConnectPage(state) {
+function renderConnectPage(state, existingWallets = []) {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -104,12 +105,22 @@ function renderConnectPage(state) {
   .opt:disabled{opacity:.5;}
   .opt .ic{width:26px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:19px;}
   #status{margin-top:18px;font-size:13px;color:#8896a8;line-height:1.6;min-height:20px;}
+  .linked{text-align:left;background:rgba(0,229,255,.05);border:1px solid rgba(0,229,255,.15);border-radius:8px;padding:12px 14px;margin-bottom:18px;}
+  .linked .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#00e5ff;margin-bottom:6px;font-weight:700;}
+  .linked code{display:block;font-size:12px;color:#8896a8;padding:2px 0;}
 </style>
 </head>
 <body>
   <div class="card">
     <h1>Verify Your AIBORGZ Wallet</h1>
-    <p class="sub">Connect and sign a free message to prove ownership. No transaction, no gas, nothing to approve, ever. Already verified another wallet? This adds it, your holdings stack.</p>
+    <p class="sub">Connect and sign a free message to prove ownership. No transaction, no gas, nothing to approve, ever.</p>
+    ${existingWallets.length ? `
+    <div class="linked">
+      <div class="lbl">Already linked (${existingWallets.length})</div>
+      ${existingWallets.map(w => `<code>${w}</code>`).join('')}
+    </div>
+    <p class="sub" style="margin-bottom:16px;">Connecting a <strong>different</strong> wallet below adds it, your holdings stack across all linked wallets. Reconnecting the same one just refreshes it.</p>
+    ` : ''}
     <button class="opt" id="mmBtn" onclick="connectMetaMask()"><span class="ic">🦊</span> MetaMask</button>
     <button class="opt" id="wcBtn" onclick="connectWalletConnect()"><span class="ic">🔗</span> WalletConnect</button>
     <div id="status"></div>
