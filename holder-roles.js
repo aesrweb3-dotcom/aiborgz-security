@@ -28,18 +28,25 @@ function tiersForBalance(balance) {
   return TIERS.filter(t => balance >= t.min);
 }
 
-async function getHolderBalance(walletAddress) {
+// Sums balanceOf() across every wallet this Discord account has linked -
+// holders can verify more than one wallet and their holdings stack.
+async function getTotalHolderBalance(discordId) {
+  const wallets = holderDb.getWalletsForDiscordId(discordId);
+  if (!wallets.length) return 0;
   const provider = new ethers.JsonRpcProvider(RPC_URL);
   const contract = new ethers.Contract(CONTRACT_ADDRESS, ERC721_ABI, provider);
-  const balance = await contract.balanceOf(walletAddress);
-  return Number(balance);
+  let total = 0;
+  for (const w of wallets) {
+    total += Number(await contract.balanceOf(w.wallet_address));
+  }
+  return total;
 }
 
 // Shared core logic - called right after verification AND on the periodic
-// recheck, so a holder who buys or sells more later still ends up on the
-// correct role, not just whatever it was the moment they first connected.
-async function checkAndAssignTier(discordId, guildId, walletAddress, client) {
-  const balance = await getHolderBalance(walletAddress);
+// recheck, so a holder who buys, sells, or links another wallet later still
+// ends up on the correct roles, not just whatever it was at first connect.
+async function checkAndAssignTier(discordId, guildId, client) {
+  const balance = await getTotalHolderBalance(discordId);
   const qualifyingTiers = tiersForBalance(balance);
   const qualifyingRoleIds = qualifyingTiers.map(t => process.env[t.envVar]).filter(Boolean);
 
@@ -85,7 +92,8 @@ async function handleHolderCommand(interaction) {
     .setTitle('// HOLDER VERIFICATION //')
     .setDescription(
       `Click **Verify Wallet** below to connect your wallet and unlock your holder role.\n\n${tierList}\n\n` +
-      `Free signature only - no transaction, no gas, nothing to approve. Your role updates automatically if your holdings change.`
+      `Free signature only - no transaction, no gas, nothing to approve. Your role updates automatically if your holdings change.\n\n` +
+      `Hold across multiple wallets? Click **Verify Wallet** again for each one, they all stack toward your tiers.`
     )
     .setFooter({ text: 'AIBORGZ Security // Holder Roles' });
 
@@ -119,18 +127,19 @@ async function handleHolderButton(interaction) {
     content:
       `Click below to connect your wallet and verify your holdings. Free signature, no transaction, ` +
       `no gas, we never ask you to send anything or approve any spending.\n\n` +
-      `[**Verify Wallet →**](${verifyUrl})`,
+      `[**Verify Wallet →**](${verifyUrl})\n\n` +
+      `Already verified? This links an *additional* wallet, your holdings stack, nothing gets removed.`,
     ephemeral: true,
   });
 }
 
 async function enforceHolderRoles(client) {
-  const links = holderDb.getAllWalletLinks();
-  for (const link of links) {
+  const users = holderDb.getAllLinkedUsers();
+  for (const u of users) {
     try {
-      await checkAndAssignTier(link.discord_id, link.guild_id, link.wallet_address, client);
+      await checkAndAssignTier(u.discord_id, u.guild_id, client);
     } catch (err) {
-      console.error(`enforceHolderRoles error for ${link.discord_id}:`, err.message);
+      console.error(`enforceHolderRoles error for ${u.discord_id}:`, err.message);
     }
   }
 }

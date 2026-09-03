@@ -11,11 +11,32 @@ const dbPath = process.env.HOLDER_DB_PATH || path.join(__dirname, 'holder-roles.
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new Database(dbPath);
 
+// One-time migration from the original one-wallet-per-Discord-account schema
+// (discord_id as primary key) to one-row-per-wallet (wallet_address as
+// primary key), so a holder can link several wallets and have them stack.
+// Safe to run on every boot - a no-op once already migrated or on a fresh DB.
+const existingCols = db.prepare(`PRAGMA table_info(holder_links)`).all();
+const hasOldSchema = existingCols.some(c => c.name === 'discord_id' && c.pk === 1);
+if (hasOldSchema) {
+  db.exec(`
+    ALTER TABLE holder_links RENAME TO holder_links_old;
+    CREATE TABLE holder_links (
+      wallet_address TEXT PRIMARY KEY,
+      discord_id     TEXT NOT NULL,
+      guild_id       TEXT NOT NULL,
+      linked_at      INTEGER
+    );
+    INSERT OR IGNORE INTO holder_links (wallet_address, discord_id, guild_id, linked_at)
+      SELECT wallet_address, discord_id, guild_id, linked_at FROM holder_links_old;
+    DROP TABLE holder_links_old;
+  `);
+}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS holder_links (
-    discord_id     TEXT PRIMARY KEY,
+    wallet_address TEXT PRIMARY KEY,
+    discord_id     TEXT NOT NULL,
     guild_id       TEXT NOT NULL,
-    wallet_address TEXT NOT NULL,
     linked_at      INTEGER
   );
 
@@ -43,25 +64,36 @@ function cleanOldStates() {
   db.prepare(`DELETE FROM holder_pending_states WHERE created_at < ?`).run(cutoff);
 }
 
-// ── wallet link ──
+// ── wallet links - many per discord_id, one discord_id per wallet ──
+function getWalletOwner(walletAddress) {
+  return db.prepare(`SELECT discord_id FROM holder_links WHERE wallet_address = ?`).get(walletAddress);
+}
+
+// Throws if the wallet is already linked to a *different* Discord account,
+// rather than silently reassigning it - a wallet's holdings should only
+// ever count toward the one identity that actually proved ownership first.
 function storeWalletLink(discordId, guildId, walletAddress) {
+  const owner = getWalletOwner(walletAddress);
+  if (owner && owner.discord_id !== discordId) {
+    throw new Error('This wallet is already linked to a different Discord account.');
+  }
   db.prepare(`
-    INSERT INTO holder_links (discord_id, guild_id, wallet_address, linked_at)
+    INSERT INTO holder_links (wallet_address, discord_id, guild_id, linked_at)
     VALUES (?, ?, ?, ?)
-    ON CONFLICT(discord_id) DO UPDATE SET
+    ON CONFLICT(wallet_address) DO UPDATE SET
       guild_id = excluded.guild_id,
-      wallet_address = excluded.wallet_address,
       linked_at = excluded.linked_at
-  `).run(discordId, guildId, walletAddress, Date.now());
+  `).run(walletAddress, discordId, guildId, Date.now());
 }
-function getWalletLink(discordId) {
-  return db.prepare(`SELECT * FROM holder_links WHERE discord_id = ?`).get(discordId);
+function getWalletsForDiscordId(discordId) {
+  return db.prepare(`SELECT * FROM holder_links WHERE discord_id = ?`).all(discordId);
 }
-function getAllWalletLinks() {
-  return db.prepare(`SELECT * FROM holder_links`).all();
+// One row per distinct verified user, for the periodic recheck loop
+function getAllLinkedUsers() {
+  return db.prepare(`SELECT DISTINCT discord_id, guild_id FROM holder_links`).all();
 }
 
 module.exports = {
   storePendingState, getPendingState, deletePendingState, cleanOldStates,
-  storeWalletLink, getWalletLink, getAllWalletLinks,
+  storeWalletLink, getWalletOwner, getWalletsForDiscordId, getAllLinkedUsers,
 };
