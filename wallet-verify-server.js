@@ -4,9 +4,11 @@ const crypto = require('crypto');
 const { ethers } = require('ethers');
 const holderDb = require('./holder-database');
 
-const app = express();
-app.use(express.json());
-const PORT = process.env.WALLET_VERIFY_PORT || 3002;
+// Exported as a router and mounted onto the Rumble OAuth server's existing
+// app/port (see rumble-oauth-server.js) rather than listening on its own
+// port - Railway only exposes one port per service publicly, so a second
+// app.listen() here would just never be reachable from the internet.
+const router = express.Router();
 
 // Set by index.js once the Discord client is ready, and given
 // checkAndAssignTier directly rather than importing holder-roles here, to
@@ -20,7 +22,7 @@ function attachDiscordClient(client, checkAndAssignTier) {
 
 // ── Landing page - linked from the DM/reply the bot sends. Wallet connect
 // and signing happen client-side here, there's no OAuth redirect involved. ──
-app.get('/wallet/start', (req, res) => {
+router.get('/wallet/start', (req, res) => {
   const { discordId, guildId } = req.query;
   if (!discordId || !guildId) {
     return res.status(400).send(renderStatusPage('Missing info', 'This link is missing required information. Go back to Discord and click Verify Wallet again.'));
@@ -31,7 +33,7 @@ app.get('/wallet/start', (req, res) => {
 });
 
 // ── Browser posts the signed message here once the wallet signs it ──
-app.post('/wallet/verify', async (req, res) => {
+router.post('/wallet/verify', async (req, res) => {
   const { state, address, signature, message } = req.body || {};
   if (!state || !address || !signature || !message) {
     return res.status(400).json({ error: 'Missing data in request.' });
@@ -71,7 +73,7 @@ app.post('/wallet/verify', async (req, res) => {
   }
 });
 
-app.get('/wallet/health', (req, res) => res.json({ status: 'ok' }));
+router.get('/wallet/health', (req, res) => res.json({ status: 'ok' }));
 
 function renderConnectPage(state) {
   return `<!DOCTYPE html>
@@ -148,8 +150,4 @@ function renderStatusPage(title, message) {
   </head><body><div class="card"><h1>${title}</h1><p>${message}</p></div></body></html>`;
 }
 
-function startWalletVerifyServer() {
-  app.listen(PORT, () => console.log(`Wallet verify server listening on port ${PORT}`));
-}
-
-module.exports = { startWalletVerifyServer, attachDiscordClient };
+module.exports = { router, attachDiscordClient };
