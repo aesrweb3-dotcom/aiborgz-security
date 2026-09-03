@@ -122,6 +122,7 @@ function renderConnectPage(state, existingWallets = []) {
     <p class="sub" style="margin-bottom:16px;">Connecting a <strong>different</strong> wallet below adds it, your holdings stack across all linked wallets. Reconnecting the same one just refreshes it.</p>
     ` : ''}
     <button class="opt" id="mmBtn" onclick="connectMetaMask()"><span class="ic">🦊</span> MetaMask</button>
+    <button class="opt" id="cbBtn" onclick="connectCoinbase()"><span class="ic">🔵</span> Coinbase Wallet</button>
     <button class="opt" id="wcBtn" onclick="connectWalletConnect()"><span class="ic">🔗</span> WalletConnect</button>
     <div id="status"></div>
   </div>
@@ -134,7 +135,18 @@ const RPC_URL = ${JSON.stringify(RPC_URL)};
 function setStatus(msg){ document.getElementById('status').textContent = msg; }
 function setBusy(busy){
   document.getElementById('mmBtn').disabled = busy;
+  document.getElementById('cbBtn').disabled = busy;
   document.getElementById('wcBtn').disabled = busy;
+}
+function isMobile(){ return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent); }
+
+// Some people have more than one wallet extension installed at once, in
+// which case window.ethereum can be either one (or a proxy over both) -
+// this picks the actual MetaMask/Coinbase provider out of the pack instead
+// of blindly trusting whichever one happened to grab window.ethereum first.
+function injectedProviders(){
+  if (!window.ethereum) return [];
+  return window.ethereum.providers?.length ? window.ethereum.providers : [window.ethereum];
 }
 
 function loadScript(src){
@@ -169,9 +181,9 @@ async function signAndVerify(provider, address){
 }
 
 async function connectMetaMask(){
-  if (!window.ethereum) {
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobile) {
+  const provider = injectedProviders().find(p => p.isMetaMask);
+  if (!provider) {
+    if (isMobile()) {
       // No injected wallet in this mobile browser - hand off to MetaMask's
       // own in-app browser, which reloads this exact page with window.ethereum present.
       const target = window.location.host + window.location.pathname + window.location.search;
@@ -183,8 +195,32 @@ async function connectMetaMask(){
   }
   setBusy(true);
   try {
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    await signAndVerify(window.ethereum, accounts[0]);
+    const accounts = await provider.request({ method: 'eth_requestAccounts' });
+    await signAndVerify(provider, accounts[0]);
+  } catch (err) {
+    setStatus(err.message || 'Something went wrong.');
+    setBusy(false);
+  }
+}
+
+async function connectCoinbase(){
+  const provider = injectedProviders().find(p => p.isCoinbaseWallet);
+  if (!provider) {
+    if (isMobile()) {
+      // No injected Coinbase provider here - hand off to Coinbase Wallet's
+      // own in-app dapp browser, which reloads this exact page from inside
+      // the app where the provider is present.
+      window.location.href = 'https://go.cb-w.com/dapp?cb_url=' + encodeURIComponent(window.location.href);
+      return;
+    }
+    setStatus('Coinbase Wallet not found. Opening the extension download page...');
+    window.open('https://www.coinbase.com/wallet/downloads', '_blank');
+    return;
+  }
+  setBusy(true);
+  try {
+    const accounts = await provider.request({ method: 'eth_requestAccounts' });
+    await signAndVerify(provider, accounts[0]);
   } catch (err) {
     setStatus(err.message || 'Something went wrong.');
     setBusy(false);
