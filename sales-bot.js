@@ -72,24 +72,31 @@ async function pollOnce(client) {
   }
 
   const events = (data.asset_events || []).slice().sort((a, b) => a.event_timestamp - b.event_timestamp);
-  if (!events.length) return;
 
-  const channel = await client.channels.fetch(SALES_CHANNEL_ID).catch(() => null);
-  if (!channel) {
-    console.error('Sales bot: could not find SALES_CHANNEL_ID', SALES_CHANNEL_ID);
-    return;
-  }
-
-  for (const event of events) {
-    try {
-      await channel.send({ embeds: [formatSaleEmbed(event)] });
-    } catch (err) {
-      console.error('Sales bot: failed to post a sale:', err.message);
+  if (events.length) {
+    const channel = await client.channels.fetch(SALES_CHANNEL_ID).catch(() => null);
+    if (!channel) {
+      console.error('Sales bot: could not find SALES_CHANNEL_ID', SALES_CHANNEL_ID);
+      // Don't advance state - retry this same window next poll, once the
+      // channel's reachable it'll pick these events back up.
+      return;
+    }
+    for (const event of events) {
+      try {
+        await channel.send({ embeds: [formatSaleEmbed(event)] });
+      } catch (err) {
+        console.error('Sales bot: failed to post a sale:', err.message);
+      }
     }
   }
 
-  state.lastEventTimestamp = events[events.length - 1].event_timestamp + 1;
-  saveState(state);
+  // Always checkpoint after a successful fetch, found something or not.
+  // Previously this only ran inside the events.length branch above, so a
+  // quiet poll (the normal case) never wrote state - which meant the next
+  // poll's "no state file yet" fallback recomputed "now" from scratch every
+  // single time, and could never see anything that happened in between.
+  // A self-reinforcing dead loop that looked identical to "working, just quiet."
+  saveState({ lastEventTimestamp: Math.floor(Date.now() / 1000) });
 }
 
 function startSalesBot(client) {
