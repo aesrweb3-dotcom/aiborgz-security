@@ -197,3 +197,34 @@ Just repeat steps 4 to 6 with a new tweet URL and, if needed, a new entry messag
 - "Could not find that X user" when running /rumble-set-tweet: double check the username has no typos and no @ symbol.
 - Verification fails even after doing it correctly: X's API has a short delay sometimes, wait 1-2 minutes and react again in Discord to re-trigger.
 - Role not removed from people who should still have it: check the tweet_url in /rumble-status matches what you expect.
+
+---
+
+# PART 4 - Sales Bot Setup
+
+Posts every AIBORGZ sale to a channel of your choice - price, buyer, seller, item image. It rides on IRON DON's existing connection, so there's no new bot application to create. It never touches the AI/roast logic; sale data is posted directly, not generated.
+
+## One-Time Setup
+
+### Step 1 - Get an OpenSea API key
+1. Go to https://docs.opensea.io and request an API key (free tier is enough for this)
+2. Put it in `OPENSEA_API_KEY`
+
+### Step 2 - Get the channel ID to post into
+1. Create or pick the channel (e.g. #sales)
+2. Enable Developer Mode if you haven't (Discord Settings, Advanced, Developer Mode)
+3. Right-click the channel, Copy Channel ID
+4. Put it in `SALES_CHANNEL_ID`
+
+### Step 3 - Deploy
+Add `OPENSEA_API_KEY` and `SALES_CHANNEL_ID` to Railway's Variables (same place as everything else) and redeploy. You'll see in the logs:
+```
+Sales bot: watching "aiborgz" for sales every 60s.
+```
+
+That's it, no slash command to register for this one. It checks for new sales once a minute and posts each one as it finds it. `OPENSEA_COLLECTION_SLUG` defaults to `aiborgz` and only needs setting if that ever changes.
+
+## Troubleshooting
+- Nothing posts: check Railway logs for "OPENSEA_API_KEY or SALES_CHANNEL_ID not set" - one of them is missing or mistyped.
+- "could not find SALES_CHANNEL_ID": IRON DON's bot needs to actually be in that channel with permission to view it and send messages.
+- Old sales flood in on first deploy: shouldn't happen, it starts watching from the moment it first boots, not from the collection's full history. If it does, check the server clock/timezone Railway is running with.

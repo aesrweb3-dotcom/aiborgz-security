@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { startSalesBot } = require('./sales-bot');
 
 const client = new Client({
   intents: [
@@ -182,6 +183,8 @@ client.once('ready', async () => {
   } catch (err) {
     console.error('Slash command registration failed:', err.message);
   }
+
+  startSalesBot(client);
 });
 
 client.on('interactionCreate', async interaction => {
