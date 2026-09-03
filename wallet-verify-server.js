@@ -149,6 +149,29 @@ function injectedProviders(){
   return window.ethereum.providers?.length ? window.ethereum.providers : [window.ethereum];
 }
 
+// EIP-6963 - newer wallets (Coinbase Wallet included) have moved to this for
+// multi-wallet discovery instead of reliably populating window.ethereum.providers,
+// which is exactly what was breaking Coinbase detection when another wallet
+// extension was also installed. Wallets respond to the request event almost
+// immediately, well before a person can click a connect button.
+let eip6963Providers = [];
+window.addEventListener('eip6963:announceProvider', (event) => {
+  eip6963Providers.push(event.detail);
+});
+window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+function isCoinbase(provider, info){
+  return !!provider?.isCoinbaseWallet || /coinbase/i.test(info?.rdns || '') || /coinbase/i.test(info?.name || '');
+}
+function isMetaMask(provider, info){
+  return !!provider?.isMetaMask || /metamask/i.test(info?.rdns || '') || /metamask/i.test(info?.name || '');
+}
+function findProvider(match){
+  const viaEip6963 = eip6963Providers.find(d => match(d.provider, d.info));
+  if (viaEip6963) return viaEip6963.provider;
+  return injectedProviders().find(p => match(p, {}));
+}
+
 function loadScript(src){
   return new Promise((res, rej) => {
     if (document.querySelector('script[src="' + src + '"]')) return res();
@@ -181,7 +204,7 @@ async function signAndVerify(provider, address){
 }
 
 async function connectMetaMask(){
-  const provider = injectedProviders().find(p => p.isMetaMask);
+  const provider = findProvider(isMetaMask);
   if (!provider) {
     if (isMobile()) {
       // No injected wallet in this mobile browser - hand off to MetaMask's
@@ -204,7 +227,7 @@ async function connectMetaMask(){
 }
 
 async function connectCoinbase(){
-  const provider = injectedProviders().find(p => p.isCoinbaseWallet);
+  const provider = findProvider(isCoinbase);
   if (!provider) {
     if (isMobile()) {
       // No injected Coinbase provider here - hand off to Coinbase Wallet's
