@@ -7,8 +7,8 @@ const CONTRACT_ADDRESS = process.env.AIBORGZ_CONTRACT_ADDRESS || '0xc086de91ea6f
 const RPC_URL = process.env.ROBINHOOD_RPC_URL || 'https://rpc.mainnet.chain.robinhood.com/';
 const ERC721_ABI = ['function balanceOf(address) view returns (uint256)'];
 
-// Highest threshold first - tierForBalance() returns the first one a
-// holder's balance clears, so this order matters.
+// Highest threshold first, used for display order (e.g. the entry embed's
+// tier list) - tiersForBalance() itself doesn't depend on this ordering.
 const TIERS = [
   { min: 50, name: 'CLASSIFIED',      envVar: 'ROLE_CLASSIFIED' },
   { min: 25, name: 'SEVERE THREAT',   envVar: 'ROLE_SEVERE_THREAT' },
@@ -21,8 +21,11 @@ function allTierRoleIds() {
   return TIERS.map(t => process.env[t.envVar]).filter(Boolean);
 }
 
-function tierForBalance(balance) {
-  return TIERS.find(t => balance >= t.min) || null;
+// Stacked, not exclusive - a 50+ holder qualifies for every tier at or
+// below theirs too, so LOW THREAT ends up as a de facto "verified holder"
+// role everyone has, and tagging any tier pings "this many or more."
+function tiersForBalance(balance) {
+  return TIERS.filter(t => balance >= t.min);
 }
 
 async function getHolderBalance(walletAddress) {
@@ -37,25 +40,30 @@ async function getHolderBalance(walletAddress) {
 // correct role, not just whatever it was the moment they first connected.
 async function checkAndAssignTier(discordId, guildId, walletAddress, client) {
   const balance = await getHolderBalance(walletAddress);
-  const tier = tierForBalance(balance);
-  const targetRoleId = tier ? process.env[tier.envVar] : null;
+  const qualifyingTiers = tiersForBalance(balance);
+  const qualifyingRoleIds = qualifyingTiers.map(t => process.env[t.envVar]).filter(Boolean);
 
   const guild = await client.guilds.fetch(guildId);
   const member = await guild.members.fetch(discordId).catch(() => null);
-  if (!member) return { balance, tier };
+  if (!member) return { balance, tiers: qualifyingTiers };
 
+  // Drop any tier role they no longer qualify for (relevant on the periodic
+  // recheck - someone who sold down loses the tiers above their new balance)
   for (const roleId of allTierRoleIds()) {
-    if (roleId !== targetRoleId && member.roles.cache.has(roleId)) {
+    if (!qualifyingRoleIds.includes(roleId) && member.roles.cache.has(roleId)) {
       await member.roles.remove(roleId).catch(err =>
         console.error(`Holder roles: failed to remove role ${roleId} from ${discordId}:`, err.message));
     }
   }
-  if (targetRoleId && !member.roles.cache.has(targetRoleId)) {
-    await member.roles.add(targetRoleId).catch(err =>
-      console.error(`Holder roles: failed to add role ${targetRoleId} to ${discordId} - check the bot's role sits above the tier roles in Server Settings > Roles:`, err.message));
+  // Add every tier role they qualify for but don't have yet
+  for (const roleId of qualifyingRoleIds) {
+    if (!member.roles.cache.has(roleId)) {
+      await member.roles.add(roleId).catch(err =>
+        console.error(`Holder roles: failed to add role ${roleId} to ${discordId} - check the bot's role sits above the tier roles in Server Settings > Roles:`, err.message));
+    }
   }
 
-  return { balance, tier };
+  return { balance, tiers: qualifyingTiers };
 }
 
 const holderCommands = [

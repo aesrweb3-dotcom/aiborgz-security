@@ -61,12 +61,12 @@ router.post('/wallet/verify', async (req, res) => {
 
     holderDb.storeWalletLink(pending.discord_id, pending.guild_id, recovered);
 
-    let result = { balance: 0, tier: null };
+    let result = { balance: 0, tiers: [] };
     if (discordClient && checkAndAssignTierFn) {
       result = await checkAndAssignTierFn(pending.discord_id, pending.guild_id, recovered, discordClient);
     }
 
-    res.json({ ok: true, balance: result.balance, tierName: result.tier ? result.tier.name : null });
+    res.json({ ok: true, balance: result.balance, tierNames: result.tiers.map(t => t.name) });
   } catch (err) {
     console.error('Wallet verify error:', err.message);
     res.status(500).json({ error: 'Could not verify signature. Please try again.' });
@@ -126,8 +126,8 @@ async function connect(){
     });
     const data = await res.json();
     if (data.ok) {
-      status.textContent = data.tierName
-        ? ('Verified! ' + data.balance + ' held — role: ' + data.tierName + '. Head back to Discord.')
+      status.textContent = (data.tierNames && data.tierNames.length)
+        ? ('Verified! ' + data.balance + ' held — roles: ' + data.tierNames.join(', ') + '. Head back to Discord.')
         : ('Verified, but this wallet holds 0 AIBORGZ right now, so no tier role yet.');
       btn.style.display = 'none';
     } else {
