@@ -7,6 +7,7 @@ const rumbleGate = require('./rumble-gate');
 const { attachDiscordClient } = require('./rumble-oauth-server');
 const holderRoles = require('./holder-roles');
 const { attachDiscordClient: attachHolderClient } = require('./wallet-verify-server');
+const unitsIndex = require('./units-index');
 
 const client = new Client({
   intents: [
@@ -42,6 +43,10 @@ client.once('ready', () => {
   // Every 10 minutes, recheck every verified wallet's balance and move them
   // to the correct tier role if their holdings changed
   setInterval(() => holderRoles.enforceHolderRoles(client), 10 * 60 * 1000);
+
+  // Keeps the wallet -> owned units index current for My AIBORGZ's fast
+  // lookup API - catches up immediately, then re-syncs every minute
+  unitsIndex.startUnitsIndexer();
 });
 
 // ── RUMBLE ROOM VERIFY BUTTON ──

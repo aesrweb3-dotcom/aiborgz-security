@@ -235,20 +235,21 @@ That's it, no slash command to register for this one. It checks for new sales on
 
 Holders connect their wallet, sign a free message proving ownership (no transaction, no gas, nothing to approve), and get a Discord role based on how many AIBORGZ they hold. Rechecks every 10 minutes, so buying more or selling moves you to the correct role automatically, not just at the moment you first verified.
 
-Tiers, highest one a holder qualifies for wins, they're never stacked:
+Tiers stack - a 100+ holder has every role below theirs too, not just the top one, so the lowest tier ends up as a de facto "verified holder" role everyone has:
 
 | Holdings | Role |
 |---|---|
-| 1+ | LOW THREAT |
+| 1+ | AIBORGZ HOLDER |
 | 5+ | MODERATE THREAT |
 | 10+ | HIGH THREAT |
 | 25+ | SEVERE THREAT |
 | 50+ | CLASSIFIED |
+| 100+ | SINGULARITY |
 
 ## One-Time Setup
 
-### Step 1 - Create the five roles
-Server Settings → Roles → create all five with whatever colors/names you want (Security Bot app, General Information tab has your Application ID if you need `DISCORD_CLIENT_ID` again). Then get each role's ID: Developer Mode on, right-click each role → Copy Role ID.
+### Step 1 - Create the six roles
+Server Settings → Roles → create all six with whatever colors/names you want (Security Bot app, General Information tab has your Application ID if you need `DISCORD_CLIENT_ID` again). Then get each role's ID: Developer Mode on, right-click each role → Copy Role ID.
 
 ### Step 2 - Fill in `.env` / Railway variables
 ```
@@ -257,6 +258,7 @@ ROLE_MODERATE_THREAT=...
 ROLE_HIGH_THREAT=...
 ROLE_SEVERE_THREAT=...
 ROLE_CLASSIFIED=...
+ROLE_SINGULARITY=...
 ```
 `AIBORGZ_CONTRACT_ADDRESS` and `ROBINHOOD_RPC_URL` already default correctly in the code, only set them if either ever changes. `BASE_URL` is the same variable the Rumble Room Gate already uses, no need to set it twice.
 
@@ -278,3 +280,23 @@ This posts an embed with a **Verify Wallet** button. Clicking it DMs/replies wit
 - Verified but no role: that wallet holds 0 AIBORGZ, the page will say so directly instead of silently failing.
 - Role doesn't update after a wallet buys/sells: recheck runs every 10 minutes, not instantly, wait for the next cycle or nudge it by having them click Verify Wallet again.
 - "No wallet found" on the verify page: they need to open the link from a browser with MetaMask (or similar) installed, or from inside their wallet app's own browser, not a browser with no wallet extension at all.
+
+# PART 6 - Units Index Setup
+
+Powers the fast "what do I own" lookup on the My AIBORGZ page (`my-aiborgz.html` on the main site). Without this, that page has to scan the chain live on every visit - up to all 3333 tokens one by one on a wallet whose extension doesn't support `eth_getLogs`, which can take a couple of minutes. This keeps a local index in sync instead, so lookups are instant. My AIBORGZ still works with this offline, it just falls back to the slow live scan.
+
+## One-Time Setup
+
+### Step 1 - Fill in `.env` / Railway variables
+```
+UNITS_INDEX_DB_PATH=/data/units-index.db
+```
+`AIBORGZ_CONTRACT_ADDRESS` and `ROBINHOOD_RPC_URL` are shared with Holder Roles above, no need to set them twice. Same `/data` volume requirement as every other `*_DB_PATH` in this project - if you haven't already attached a Railway Volume mounted at `/data`, do that first or this resyncs from scratch on every redeploy instead of staying current.
+
+### Step 2 - Nothing else
+It starts itself the moment the bot comes online - catches up immediately, then re-syncs every minute. Check the deploy logs for `Units indexer: applied N transfer(s)` to confirm it's running.
+
+## Troubleshooting
+- `GET /units/health` should return `{"status":"ok"}` - if it 404s, the router isn't mounted (check `rumble-oauth-server.js` requires and uses `units-index-server.js`).
+- Lookups return an empty list for a wallet that definitely holds units: check the deploy logs for `Units indexer sync failed` - if the very first sync after a redeploy is still running, results will be incomplete until it finishes.
+- My AIBORGZ falls back to a live chain scan automatically if this API is unreachable, so a temporary outage here degrades gracefully rather than breaking the page.

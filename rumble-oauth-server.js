@@ -4,12 +4,14 @@ const crypto = require('crypto');
 const xVerify = require('./x-verify');
 const rumbleDb = require('./rumble-database');
 const walletVerify = require('./wallet-verify-server');
+const unitsIndex = require('./units-index-server');
 
 const app = express();
 app.use(express.json());   // needed for wallet-verify's POST /wallet/verify body
 app.use(walletVerify.router);   // mounts /wallet/* alongside /rumble/* below - Railway
                                  // only exposes one port publicly, so this has to be
                                  // the same app/port rather than a second server
+app.use(unitsIndex.router);     // mounts /units/* the same way
 const PORT = process.env.RUMBLE_OAUTH_PORT || 3001;
 
 // Set by index.js once the Discord client is ready — lets this server
