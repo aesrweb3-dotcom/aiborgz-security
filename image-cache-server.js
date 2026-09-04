@@ -29,14 +29,30 @@ function ipfsToHttp(uri, gatewayIndex) {
   return uri;
 }
 
-async function fetchWithFallback(ipfsUri) {
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Same rotation + retry-with-backoff as the client-side version in
+// my-aiborgz.html. This one matters even more here: Railway's own outbound
+// IP gets rate-limited by the public gateways too, and a fast bulk prewarm
+// run proved it - hammering this endpoint without retry logic here produced
+// an 87% failure rate (850 processed, 742 failed) even though the gateways
+// themselves were fine for isolated requests. A single pass with no retry
+// just meant one rate-limited moment permanently failed that token.
+let gatewayRotation = 0;
+async function fetchWithFallback(ipfsUri, maxPasses) {
+  maxPasses = maxPasses || 4;
+  const startGateway = gatewayRotation++ % IPFS_GATEWAYS.length;
   let lastErr;
-  for (let g = 0; g < IPFS_GATEWAYS.length; g++) {
-    try {
-      const res = await fetch(ipfsToHttp(ipfsUri, g));
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return res;
-    } catch (e) { lastErr = e; }
+  for (let pass = 0; pass < maxPasses; pass++) {
+    if (pass > 0) await sleep(2000 * pass);
+    for (let i = 0; i < IPFS_GATEWAYS.length; i++) {
+      const g = (startGateway + i) % IPFS_GATEWAYS.length;
+      try {
+        const res = await fetch(ipfsToHttp(ipfsUri, g));
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res;
+      } catch (e) { lastErr = e; }
+    }
   }
   throw lastErr;
 }
