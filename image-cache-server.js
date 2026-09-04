@@ -84,6 +84,7 @@ router.get('/image/:tokenId', async (req, res) => {
   if (fs.existsSync(cachePath)) {
     res.set('Cache-Control', 'public, max-age=31536000, immutable');
     res.set('Content-Type', 'image/png');
+    res.set('X-Cache', 'HIT'); // lets the prewarm script skip its throttle delay on hits - they never touch IPFS
     return res.sendFile(cachePath);
   }
 
@@ -103,6 +104,7 @@ router.get('/image/:tokenId', async (req, res) => {
     delete inflight[tokenId];
     res.set('Cache-Control', 'public, max-age=31536000, immutable');
     res.set('Content-Type', 'image/png');
+    res.set('X-Cache', 'MISS');
     res.send(buffer);
   } catch (e) {
     delete inflight[tokenId];
