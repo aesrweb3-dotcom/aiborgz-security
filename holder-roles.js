@@ -15,7 +15,7 @@ const TIERS = [
   { min: 25, name: 'SEVERE THREAT',   envVar: 'ROLE_SEVERE_THREAT' },
   { min: 10, name: 'HIGH THREAT',     envVar: 'ROLE_HIGH_THREAT' },
   { min: 5,  name: 'MODERATE THREAT', envVar: 'ROLE_MODERATE_THREAT' },
-  { min: 1,  name: 'LOW THREAT',      envVar: 'ROLE_LOW_THREAT' },
+  { min: 1,  name: 'AIBORGZ HOLDER',  envVar: 'ROLE_LOW_THREAT' },
 ];
 
 function allTierRoleIds() {
