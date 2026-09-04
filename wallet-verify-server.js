@@ -123,6 +123,7 @@ function renderConnectPage(state, existingWallets = []) {
     ` : ''}
     <button class="opt" id="mmBtn" onclick="connectMetaMask()"><span class="ic">🦊</span> MetaMask</button>
     <button class="opt" id="cbBtn" onclick="connectCoinbase()"><span class="ic">🔵</span> Coinbase Wallet</button>
+    <button class="opt" id="phBtn" onclick="connectPhantom()"><span class="ic">👻</span> Phantom</button>
     <button class="opt" id="wcBtn" onclick="connectWalletConnect()"><span class="ic">🔗</span> WalletConnect</button>
     <div id="status"></div>
   </div>
@@ -136,6 +137,7 @@ function setStatus(msg){ document.getElementById('status').textContent = msg; }
 function setBusy(busy){
   document.getElementById('mmBtn').disabled = busy;
   document.getElementById('cbBtn').disabled = busy;
+  document.getElementById('phBtn').disabled = busy;
   document.getElementById('wcBtn').disabled = busy;
 }
 function isMobile(){ return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent); }
@@ -160,12 +162,19 @@ window.addEventListener('eip6963:announceProvider', (event) => {
 });
 window.dispatchEvent(new Event('eip6963:requestProvider'));
 
-function isCoinbase(provider, info){
-  return !!provider?.isCoinbaseWallet || /coinbase/i.test(info?.rdns || '') || /coinbase/i.test(info?.name || '');
+// rdns is a wallet-specific reverse-domain id from EIP-6963 - much harder to
+// spoof than a boolean flag. Several real wallets (Rabby, Exodus) set
+// isMetaMask:true on themselves for backward-compat with dapps that only
+// check the flag, which was making the MetaMask button grab those instead
+// of real MetaMask whenever both were installed. Trust rdns first, and only
+// fall back to the flag for wallets old enough not to support EIP-6963 at all.
+function matchesWallet(provider, info, rdnsPattern, legacyFlag){
+  if (info?.rdns) return rdnsPattern.test(info.rdns);
+  return !!provider?.[legacyFlag];
 }
-function isMetaMask(provider, info){
-  return !!provider?.isMetaMask || /metamask/i.test(info?.rdns || '') || /metamask/i.test(info?.name || '');
-}
+function isCoinbase(provider, info){ return matchesWallet(provider, info, /coinbase/i, 'isCoinbaseWallet'); }
+function isMetaMask(provider, info){ return matchesWallet(provider, info, /metamask/i, 'isMetaMask'); }
+function isPhantom(provider, info){ return matchesWallet(provider, info, /phantom/i, 'isPhantom'); }
 function findProvider(match){
   const viaEip6963 = eip6963Providers.find(d => match(d.provider, d.info));
   if (viaEip6963) return viaEip6963.provider;
@@ -238,6 +247,33 @@ async function connectCoinbase(){
     }
     setStatus('Coinbase Wallet not found. Opening the extension download page...');
     window.open('https://www.coinbase.com/wallet/downloads', '_blank');
+    return;
+  }
+  setBusy(true);
+  try {
+    const accounts = await provider.request({ method: 'eth_requestAccounts' });
+    await signAndVerify(provider, accounts[0]);
+  } catch (err) {
+    setStatus(err.message || 'Something went wrong.');
+    setBusy(false);
+  }
+}
+
+async function connectPhantom(){
+  // Phantom exposes its EVM provider at window.phantom.ethereum specifically
+  // to avoid the window.ethereum collision other wallets fight over, so
+  // check there first - it's the one namespace only Phantom populates.
+  const provider = window.phantom?.ethereum || findProvider(isPhantom);
+  if (!provider) {
+    if (isMobile()) {
+      // Both url and ref are required per Phantom's own deeplink docs - a
+      // browse link missing ref is not guaranteed to work.
+      window.location.href = 'https://phantom.app/ul/browse/' + encodeURIComponent(window.location.href)
+        + '?ref=' + encodeURIComponent(window.location.origin);
+      return;
+    }
+    setStatus('Phantom not found. Opening the extension download page...');
+    window.open('https://phantom.app/download', '_blank');
     return;
   }
   setBusy(true);
