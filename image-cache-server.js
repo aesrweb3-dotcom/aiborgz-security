@@ -66,11 +66,24 @@ const contract = new ethers.Contract(CONTRACT_ADDRESS, ERC721_ABI, provider);
 const inflight = {};
 
 // Registered before /image/:tokenId - Express matches in order, and the
-// wildcard would otherwise swallow this (tokenId="health") first.
+// wildcard would otherwise swallow these (tokenId="health"/"missing") first.
 router.get('/image/health', (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
   const cachedCount = fs.readdirSync(CACHE_DIR).length;
   res.json({ status: 'ok', cachedCount });
+});
+
+// Lets a prewarm/closer script target only the stragglers instead of
+// re-requesting all 3333 every run just to find out most are already cached.
+router.get('/image/missing', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  const totalSupply = parseInt(req.query.totalSupply, 10) || 3333;
+  const cached = new Set(fs.readdirSync(CACHE_DIR).map(f => f.replace('.png', '')));
+  const missing = [];
+  for (let id = 1; id <= totalSupply; id++) {
+    if (!cached.has(String(id))) missing.push(id);
+  }
+  res.json({ missing, missingCount: missing.length, cachedCount: cached.size });
 });
 
 router.get('/image/:tokenId', async (req, res) => {

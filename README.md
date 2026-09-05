@@ -300,3 +300,31 @@ It starts itself the moment the bot comes online - catches up immediately, then 
 - `GET /units/health` should return `{"status":"ok"}` - if it 404s, the router isn't mounted (check `rumble-oauth-server.js` requires and uses `units-index-server.js`).
 - Lookups return an empty list for a wallet that definitely holds units: check the deploy logs for `Units indexer sync failed` - if the very first sync after a redeploy is still running, results will be incomplete until it finishes.
 - My AIBORGZ falls back to a live chain scan automatically if this API is unreachable, so a temporary outage here degrades gracefully rather than breaking the page.
+
+# PART 7 - Image Cache Setup
+
+Serves each token's image straight from this server instead of My AIBORGZ fetching it from a public IPFS gateway on every visit. Public gateways rate-limit hard after a burst of requests, so without this, images randomly fail to load once more than a handful of people are browsing at once. This fetches each image from IPFS exactly once, ever, and serves it from disk after that - fast and no gateway dependency for anyone after the first person ever loads a given token.
+
+## One-Time Setup
+
+### Step 1 - Fill in `.env` / Railway variables
+```
+IMAGE_CACHE_DIR=/data/image-cache
+```
+Same `/data` volume requirement as every other path in this project. If this isn't set, it falls back to a folder next to the code, which does NOT survive a redeploy - the whole cache silently resets to empty every time you push, which looks identical to a gateway outage from a user's perspective. Double check this is actually set on Railway, not just in `.env.example`.
+
+### Step 2 - Warm the cache
+Nothing serves until an image has been requested at least once. Real visits fill it in naturally over time, but the first visitor for any given token still pays the cold-fetch cost (a couple seconds) and there's no guarantee every one of the 3333 gets a visit on its own. To avoid that, run a one-off script that requests every token from this API once so the whole collection is cached before anyone needs it:
+```js
+// hits GET /image/:id for every token, low concurrency + delay so it doesn't
+// get rate-limited by the same public gateways it's trying to avoid exposing
+// to visitors. Safe to re-run - already-cached tokens return instantly and
+// don't count against the delay.
+```
+Use `GET /image/missing` to see exactly which token IDs still need warming instead of re-requesting all 3333 every run - handy for a second pass if the first one leaves stragglers (public gateways are flaky enough that some tokens can need a few attempts).
+
+## Troubleshooting
+- `GET /image/health` returns `{"status":"ok","cachedCount":N}` - N should climb toward 3333 and never drop. A drop after a deploy means the volume isn't mounted (see Step 1).
+- `GET /image/missing` returns the list of token IDs not yet cached, plus a count - use this to target a retry pass instead of guessing.
+- A response's `X-Cache` header is `HIT` (served from disk, instant) or `MISS` (just fetched from IPFS and cached for next time, a couple seconds). My AIBORGZ and any prewarm script should only throttle after a MISS - hits don't touch IPFS at all and don't need it.
+- My AIBORGZ falls back to fetching from public gateways directly if this API is unreachable, so a temporary outage here degrades gracefully rather than breaking the page - just slower and subject to the same rate limits this service exists to avoid.
