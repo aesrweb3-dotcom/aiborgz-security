@@ -124,6 +124,7 @@ function renderConnectPage(state, existingWallets = []) {
     <button class="opt" id="mmBtn" onclick="connectMetaMask()"><span class="ic">🦊</span> MetaMask</button>
     <button class="opt" id="cbBtn" onclick="connectCoinbase()"><span class="ic">🔵</span> Coinbase Wallet</button>
     <button class="opt" id="phBtn" onclick="connectPhantom()"><span class="ic">👻</span> Phantom</button>
+    <button class="opt" id="okxBtn" onclick="connectOKX()"><span class="ic">⬛</span> OKX Wallet</button>
     <button class="opt" id="wcBtn" onclick="connectWalletConnect()"><span class="ic">🔗</span> WalletConnect</button>
     <div id="status"></div>
   </div>
@@ -138,6 +139,7 @@ function setBusy(busy){
   document.getElementById('mmBtn').disabled = busy;
   document.getElementById('cbBtn').disabled = busy;
   document.getElementById('phBtn').disabled = busy;
+  document.getElementById('okxBtn').disabled = busy;
   document.getElementById('wcBtn').disabled = busy;
 }
 function isMobile(){ return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent); }
@@ -175,6 +177,7 @@ function matchesWallet(provider, info, rdnsPattern, legacyFlag){
 function isCoinbase(provider, info){ return matchesWallet(provider, info, /coinbase/i, 'isCoinbaseWallet'); }
 function isMetaMask(provider, info){ return matchesWallet(provider, info, /metamask/i, 'isMetaMask'); }
 function isPhantom(provider, info){ return matchesWallet(provider, info, /phantom/i, 'isPhantom'); }
+function isOkx(provider, info){ return matchesWallet(provider, info, /okx|okex/i, 'isOkxWallet'); }
 function findProvider(match){
   const viaEip6963 = eip6963Providers.find(d => match(d.provider, d.info));
   if (viaEip6963) return viaEip6963.provider;
@@ -274,6 +277,34 @@ async function connectPhantom(){
     }
     setStatus('Phantom not found. Opening the extension download page...');
     window.open('https://phantom.app/download', '_blank');
+    return;
+  }
+  setBusy(true);
+  try {
+    const accounts = await provider.request({ method: 'eth_requestAccounts' });
+    await signAndVerify(provider, accounts[0]);
+  } catch (err) {
+    setStatus(err.message || 'Something went wrong.');
+    setBusy(false);
+  }
+}
+
+async function connectOKX(){
+  // OKX injects its own dedicated namespace (window.okxwallet) rather than
+  // a legacy isOkxWallet-style flag, same idea as Phantom's window.phantom.ethereum.
+  const provider = window.okxwallet || findProvider(isOkx);
+  if (!provider) {
+    if (isMobile()) {
+      // Unlike MetaMask/Phantom/Coinbase, OKX's mobile deep link expects a
+      // live WalletConnect pairing URI, not a plain "open this URL" link -
+      // WalletConnect's own modal already deep-links into OKX from its
+      // wallet list, so route through the connector already built for that.
+      setStatus('Opening WalletConnect - pick OKX Wallet from the list...');
+      await connectWalletConnect();
+      return;
+    }
+    setStatus('OKX Wallet not found. Opening the extension download page...');
+    window.open('https://web3.okx.com/download', '_blank');
     return;
   }
   setBusy(true);

@@ -202,7 +202,9 @@ Just repeat steps 4 to 6 with a new tweet URL and, if needed, a new entry messag
 
 # PART 4 - Sales Bot Setup
 
-Posts every AIBORGZ sale to a channel of your choice - price, buyer, seller, item image. It rides on IRON DON's existing connection, so there's no new bot application to create. It never touches the AI/roast logic; sale data is posted directly, not generated.
+Posts every AIBORGZ sale to a channel of your choice - price, buyer, seller, item image, and whether the buyer is a brand new holder or how many AIBORGZ they hold in total after the buy (a live `balanceOf` read against the contract, not cached - always current). It rides on IRON DON's existing connection, so there's no new bot application to create. It never touches the AI/roast logic; sale data is posted directly, not generated.
+
+The holder-status lookup reuses the same `AIBORGZ_CONTRACT_ADDRESS` / `ROBINHOOD_RPC_URL` variables as Holder Roles and Units Index above - nothing new to set if either of those is already configured, and if the lookup ever fails (RPC hiccup) the sale still posts, just without that field.
 
 ## One-Time Setup
 
