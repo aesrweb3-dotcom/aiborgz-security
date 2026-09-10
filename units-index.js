@@ -56,75 +56,73 @@ function getIndexerStatus() {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// Same chunking/backoff pattern as the client-side scan in my-aiborgz.html:
-// try the full range in one call first (works fine directly against the
-// RPC), fall back to narrower chunks - remembering whatever size last
-// worked instead of re-discovering it every window - only if that's rejected.
-async function queryFilterChunked(contract, filter, fromBlock, toBlock, startChunkSize) {
-  const results = [];
-  let from = fromBlock;
-  let chunkSize = startChunkSize;
-  while (from <= toBlock) {
-    const to = Math.min(from + chunkSize - 1, toBlock);
-    try {
-      results.push(...await contract.queryFilter(filter, from, to));
-      from = to + 1;
-      await sleep(60);
-    } catch (e) {
-      const msg = (e.message || '').toLowerCase();
-      if (msg.includes('too many requests') || msg.includes('rate limit') || msg.includes('429')) {
-        await sleep(1000);
-        continue;
-      }
-      if (chunkSize <= 20000) throw new Error('getLogs failed even at a 20000-block range: ' + e.message);
-      chunkSize = Math.floor(chunkSize / 2);
-    }
+const upsertOwner = db.prepare(`
+  INSERT INTO token_owners (token_id, owner_address, updated_at)
+  VALUES (?, ?, ?)
+  ON CONFLICT(token_id) DO UPDATE SET owner_address = excluded.owner_address, updated_at = excluded.updated_at
+`);
+const applyEvents = db.transaction((evts) => {
+  // Apply in the order they actually happened so the last write for a
+  // given tokenId is whoever really owns it now, not just insertion order.
+  evts.sort((a, b) => a.blockNumber - b.blockNumber || a.index - b.index);
+  for (const ev of evts) {
+    upsertOwner.run(Number(ev.args.tokenId), ev.args.to.toLowerCase(), Date.now());
   }
-  return results;
-}
-
-async function getAllTransferLogs(contract, fromBlock, toBlock) {
-  const filter = contract.filters.Transfer();
-  try {
-    return await contract.queryFilter(filter, fromBlock, toBlock);
-  } catch (e) {
-    return await queryFilterChunked(contract, filter, fromBlock, toBlock, 2000000);
-  }
-}
+});
 
 let syncing = false;
+// Chunked, with progress persisted after EVERY successful chunk - not just
+// once at the very end of the whole catch-up range. The previous version
+// only called setState('last_synced_block', ...) after successfully
+// fetching+applying the ENTIRE fromBlock..latest range in one pass; if any
+// single chunk anywhere in that range kept failing (rate limits, a request
+// that's simply too large once the gap has grown into the millions of
+// blocks), the indexer made literally zero forward progress every single
+// 60-second cycle, forever - which is exactly what happened here: it sat
+// parked ~4.4M blocks behind for months, silently (failures only ever went
+// to console.error, easy to miss), so ownership lookups kept returning
+// wherever a token was OWNED BACK THEN instead of now. Persisting after
+// each chunk means a later failure can no longer erase earlier progress -
+// worst case this cycle stops partway through and picks back up exactly
+// where it left off on the next one, instead of restarting from scratch.
 async function syncFromChain() {
   if (syncing) return; // never overlap - a slow sync plus the 60s interval could otherwise stack up
   syncing = true;
   try {
     const provider = new ethers.JsonRpcProvider(RPC_URL);
     const contract = new ethers.Contract(CONTRACT_ADDRESS, ERC721_ABI, provider);
+    const filter = contract.filters.Transfer();
 
     const lastSynced = parseInt(getState('last_synced_block') || '0', 10);
     const latest = await provider.getBlockNumber();
     if (lastSynced > 0 && lastSynced >= latest) return; // already caught up
 
-    const fromBlock = lastSynced === 0 ? 0 : lastSynced + 1;
-    const events = await getAllTransferLogs(contract, fromBlock, latest);
-
-    // Apply in the order they actually happened so the last write for a
-    // given tokenId is whoever really owns it now, not just insertion order.
-    events.sort((a, b) => a.blockNumber - b.blockNumber || a.index - b.index);
-
-    const upsert = db.prepare(`
-      INSERT INTO token_owners (token_id, owner_address, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(token_id) DO UPDATE SET owner_address = excluded.owner_address, updated_at = excluded.updated_at
-    `);
-    const applyAll = db.transaction((evts) => {
-      for (const ev of evts) {
-        upsert.run(Number(ev.args.tokenId), ev.args.to.toLowerCase(), Date.now());
+    let from = lastSynced === 0 ? 0 : lastSynced + 1;
+    let chunkSize = 2000000; // try the full remaining range first when it's small; this just becomes the starting point when it's not
+    let appliedTotal = 0;
+    while (from <= latest) {
+      const to = Math.min(from + chunkSize - 1, latest);
+      try {
+        const events = await contract.queryFilter(filter, from, to);
+        applyEvents(events);
+        appliedTotal += events.length;
+        setState('last_synced_block', to);
+        from = to + 1;
+        await sleep(60);
+      } catch (e) {
+        const msg = (e.message || '').toLowerCase();
+        if (msg.includes('too many requests') || msg.includes('rate limit') || msg.includes('429')) {
+          await sleep(1000);
+          continue;
+        }
+        if (chunkSize <= 20000) {
+          console.error(`Units indexer: chunk ${from}-${to} failed even at the 20000-block floor (${e.message}) - stopping this cycle, will resume from block ${from} next time`);
+          return;
+        }
+        chunkSize = Math.floor(chunkSize / 2);
       }
-    });
-    applyAll(events);
-
-    setState('last_synced_block', latest);
-    if (events.length) console.log(`Units indexer: applied ${events.length} transfer(s), synced to block ${latest}`);
+    }
+    if (appliedTotal) console.log(`Units indexer: applied ${appliedTotal} transfer(s), synced to block ${latest}`);
   } catch (e) {
     console.error('Units indexer sync failed:', e.message);
   } finally {
