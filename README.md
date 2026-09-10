@@ -330,3 +330,31 @@ Use `GET /image/missing` to see exactly which token IDs still need warming inste
 - `GET /image/missing` returns the list of token IDs not yet cached, plus a count - use this to target a retry pass instead of guessing.
 - A response's `X-Cache` header is `HIT` (served from disk, instant) or `MISS` (just fetched from IPFS and cached for next time, a couple seconds). My AIBORGZ and any prewarm script should only throttle after a MISS - hits don't touch IPFS at all and don't need it.
 - My AIBORGZ falls back to fetching from public gateways directly if this API is unreachable, so a temporary outage here degrades gracefully rather than breaking the page - just slower and subject to the same rate limits this service exists to avoid.
+
+# PART 8 - Card Battle Tournament Setup
+
+Powers tournament registration for `tcg.html` (Card Battle) on the main site - up to 3,333 real AIBORGZ can enter, randomly split into qualifying groups, with the top 16 going on to a live knockout bracket. Entrants have to be a fact everyone sees identically (not something each browser tracks separately), so this is a real backend, not `localStorage`.
+
+## One-Time Setup
+
+### Step 1 - Fill in `.env` / Railway variables
+```
+TOURNAMENT_DB_PATH=/data/tournament.db
+TOURNAMENT_ADMIN_KEY=<any long random string>
+```
+Same `/data` volume requirement as every other `*_DB_PATH` in this project. `TOURNAMENT_ADMIN_KEY` gates the admin actions below (closing registration, resetting for a new season) - without it set, those endpoints refuse every request with a 503 rather than silently having no protection.
+
+### Step 2 - Nothing else to deploy
+It mounts itself onto the same app/port as everything else here the moment the service boots - no separate process, no new Railway service.
+
+## How it works
+- `POST /tournament/enter` takes a wallet address and a list of token IDs, checks each one's real `ownerOf` on-chain before recording it, and rejects anything the wallet doesn't actually hold. A unit can only ever be entered by its real owner.
+- `GET /tournament/state` returns the current phase (`registration` → `closed` → …) and how many units have entered so far.
+- `GET /tournament/mine/:address` returns which of one wallet's units are already entered, so the page can show entered/not-entered per card without fetching the whole entrant list.
+- Admin closes registration (`POST /tournament/admin/close-registration`, header `X-Admin-Key: <TOURNAMENT_ADMIN_KEY>`) once entries are done - this locks the entrant list before group assignment and qualifying-stage results get computed (that computation is a separate piece, added when the qualifying/knockout UI ships).
+- `POST /tournament/admin/reset` wipes entrants and reopens registration - the only way to start a new tournament once one has run.
+
+## Troubleshooting
+- `GET /tournament/health` should return `{"status":"ok"}` - if it 404s, the router isn't mounted (check `rumble-oauth-server.js` requires and uses `tournament-server.js`).
+- "Tournament admin actions are not configured": `TOURNAMENT_ADMIN_KEY` isn't set on Railway - set it and redeploy.
+- An entry gets silently rejected: check the response body's `rejected` array - it names the exact reason per token ID (invalid id, not owned by this address, or the ownerOf lookup itself failed, e.g. an RPC hiccup - safe to just retry that one).

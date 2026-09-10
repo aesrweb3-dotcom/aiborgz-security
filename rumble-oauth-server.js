@@ -6,6 +6,7 @@ const rumbleDb = require('./rumble-database');
 const walletVerify = require('./wallet-verify-server');
 const unitsIndex = require('./units-index-server');
 const imageCache = require('./image-cache-server');
+const tournament = require('./tournament-server');
 
 const app = express();
 app.use(express.json());   // needed for wallet-verify's POST /wallet/verify body
@@ -14,6 +15,7 @@ app.use(walletVerify.router);   // mounts /wallet/* alongside /rumble/* below - 
                                  // the same app/port rather than a second server
 app.use(unitsIndex.router);     // mounts /units/* the same way
 app.use(imageCache.router);     // mounts /image/* the same way
+app.use(tournament.router);     // mounts /tournament/* the same way
 const PORT = process.env.RUMBLE_OAUTH_PORT || 3001;
 
 // Set by index.js once the Discord client is ready — lets this server
