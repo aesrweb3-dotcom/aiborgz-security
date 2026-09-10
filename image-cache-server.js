@@ -69,8 +69,17 @@ const inflight = {};
 // wildcard would otherwise swallow these (tokenId="health"/"missing") first.
 router.get('/image/health', (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
-  const cachedCount = fs.readdirSync(CACHE_DIR).length;
-  res.json({ status: 'ok', cachedCount });
+  const files = fs.readdirSync(CACHE_DIR);
+  const totalBytes = files.reduce((sum, f) => {
+    try { return sum + fs.statSync(path.join(CACHE_DIR, f)).size; } catch (e) { return sum; }
+  }, 0);
+  res.json({
+    status: 'ok',
+    cachedCount: files.length,
+    totalBytes,
+    totalMB: Math.round(totalBytes / 1024 / 1024),
+    avgBytesPerFile: files.length ? Math.round(totalBytes / files.length) : 0,
+  });
 });
 
 // Lets a prewarm/closer script target only the stragglers instead of
