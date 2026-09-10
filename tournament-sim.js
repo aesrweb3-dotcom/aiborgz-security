@@ -76,12 +76,19 @@ function simulateQualifying(entrantIds, seed) {
 // Sides are 'a'/'b' (token A / token B) rather than 'you'/'opp' since
 // neither participant is "the viewer" for a spectated tournament match -
 // the client maps a->you, b->opp once, right before launching playback.
+// Status keys mirrored from tcg.html's STATUS table - poison (damage) and
+// regen (heal, same rounds()/dmg() formulas as poison, deliberately not new
+// numbers, so it's visibly the equal-strength opposite of a debuff).
+const FX_KEYS = ['poison', 'regen'];
+const HEAL_KEYS = new Set(['regen']);
+
 function simulateKnockoutMatch(tokenA, tokenB, seed) {
   seed = seed || Math.floor(Math.random() * 2 ** 31);
   const rng = mulberry32(hashStr('AIBORGZ-KNOCKOUT:' + seed));
 
   let hpA = 100, hpB = 100;
-  const fx = { a: { poison: 0 }, b: { poison: 0 } };
+  const fx = { a: {}, b: {} };
+  FX_KEYS.forEach(k => { fx.a[k] = 0; fx.b[k] = 0; });
   const first = rng() < 0.5 ? 'a' : 'b';
   const order = first === 'a' ? ['a', 'b'] : ['b', 'a'];
   const rounds = [];
@@ -108,36 +115,45 @@ function simulateKnockoutMatch(tokenA, tokenB, seed) {
     let event = null;
     if (rng() <= 0.24) {
       const low = Math.min(hpA, hpB);
-      const pool = [];
+      const pool = ['overload']; // always eligible, same as the client's rollEvent()
       if (low >= 1 && low <= 60) pool.push('gain');
       if (low >= 40 && low <= 100) pool.push('drain');
-      if (!fx.a.poison || !fx.b.poison) pool.push('fx');
-      if (pool.length) {
-        const kind = pool[Math.floor(rng() * pool.length)];
-        if (kind === 'fx') {
-          const clean = ['a', 'b'].filter(s => !fx[s].poison);
-          const side = clean[Math.floor(rng() * clean.length)];
-          const roundsLeft = 2 + Math.floor(rng() * 3);
-          fx[side].poison = roundsLeft;
-          event = { kind: 'fx', side, rounds: roundsLeft };
-        } else {
-          const amtA = 8 + Math.floor(rng() * 13), amtB = 8 + Math.floor(rng() * 13);
-          if (kind === 'gain') { hpA = Math.min(100, hpA + amtA); hpB = Math.min(100, hpB + amtB); }
-          else { hpA = Math.max(1, hpA - amtA); hpB = Math.max(1, hpB - amtB); }
-          event = { kind, amtA, amtB };
-        }
+      if (FX_KEYS.some(k => !fx.a[k] || !fx.b[k])) pool.push('fx');
+      const kind = pool[Math.floor(rng() * pool.length)];
+      if (kind === 'overload') {
+        const side = rng() < 0.5 ? 'a' : 'b';
+        const dmg = 24 + Math.floor(rng() * 17);
+        if (side === 'a') hpA = Math.max(1, hpA - dmg); else hpB = Math.max(1, hpB - dmg);
+        event = { kind: 'overload', side, dmg };
+      } else if (kind === 'fx') {
+        const openKeys = FX_KEYS.filter(k => !fx.a[k] || !fx.b[k]);
+        const key = openKeys[Math.floor(rng() * openKeys.length)];
+        const clean = ['a', 'b'].filter(s => !fx[s][key]);
+        const side = clean[Math.floor(rng() * clean.length)];
+        const roundsLeft = 2 + Math.floor(rng() * 3);
+        fx[side][key] = roundsLeft;
+        event = { kind: 'fx', side, key, rounds: roundsLeft };
+      } else {
+        const amtA = 8 + Math.floor(rng() * 13), amtB = 8 + Math.floor(rng() * 13);
+        if (kind === 'gain') { hpA = Math.min(100, hpA + amtA); hpB = Math.min(100, hpB + amtB); }
+        else { hpA = Math.max(1, hpA - amtA); hpB = Math.max(1, hpB - amtB); }
+        event = { kind, amtA, amtB };
       }
     }
     if (dead()) { rounds.push({ attacks, event, ticks: [] }); break; }
 
     const ticks = [];
-    for (const side of ['a', 'b']) {
-      if (!fx[side].poison) continue;
-      const dmg = 3 + Math.floor(rng() * 5);
-      if (side === 'a') hpA = Math.max(0, hpA - dmg); else hpB = Math.max(0, hpB - dmg);
-      fx[side].poison--;
-      ticks.push({ side, dmg, left: fx[side].poison });
-      if (dead()) break;
+    outer: for (const side of ['a', 'b']) {
+      for (const key of FX_KEYS) {
+        if (!fx[side][key]) continue;
+        const dmg = 3 + Math.floor(rng() * 5);
+        const heal = HEAL_KEYS.has(key);
+        if (side === 'a') hpA = heal ? Math.min(100, hpA + dmg) : Math.max(0, hpA - dmg);
+        else hpB = heal ? Math.min(100, hpB + dmg) : Math.max(0, hpB - dmg);
+        fx[side][key]--;
+        ticks.push({ side, key, dmg, left: fx[side][key] });
+        if (dead()) break outer;
+      }
     }
     rounds.push({ attacks, event, ticks });
     if (dead()) break;
