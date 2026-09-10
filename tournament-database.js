@@ -34,6 +34,26 @@ db.exec(`
     token_b    INTEGER NOT NULL,
     winner     INTEGER NOT NULL
   );
+
+  -- Single-elimination bracket. One row per match, created only once its two
+  -- participants are known (so an ungenerated future round simply has no
+  -- rows yet - the client fills those slots in as "TBD"). 'script' is the
+  -- full seeded battle log from simulateKnockoutMatch, stored as JSON as
+  -- soon as the match is activated - the same log every viewer's client
+  -- replays through the existing duel engine, so "played live" means
+  -- identical for everyone, not a per-viewer random animation.
+  CREATE TABLE IF NOT EXISTS tournament_bracket_matches (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    round    TEXT NOT NULL,
+    slot     INTEGER NOT NULL,
+    token_a  INTEGER,
+    token_b  INTEGER,
+    seed     TEXT,
+    script   TEXT,
+    winner   INTEGER,
+    status   TEXT NOT NULL DEFAULT 'pending',
+    UNIQUE(round, slot)
+  );
 `);
 
 // ── phase state machine: registration -> closed -> qualifying -> knockout -> complete ──
@@ -48,11 +68,13 @@ function setMeta(key, value) {
 function getPhase() { return getMeta('phase', 'registration'); }
 function closeRegistration() { setMeta('phase', 'closed'); setMeta('closed_at', Date.now()); }
 function setQualifyingComplete(seed) { setMeta('phase', 'qualifying'); setMeta('season_seed', seed); }
+function setKnockoutStarted() { setMeta('phase', 'knockout'); }
+function setTournamentComplete() { setMeta('phase', 'complete'); }
 
 // Wipes entrants and reopens registration for a fresh tournament run - the
 // only way to start a new one once a previous run reached 'complete'.
 function resetTournament() {
-  db.exec(`DELETE FROM tournament_entrants; DELETE FROM tournament_qualifying_matches;`);
+  db.exec(`DELETE FROM tournament_entrants; DELETE FROM tournament_qualifying_matches; DELETE FROM tournament_bracket_matches;`);
   setMeta('phase', 'registration');
   db.prepare(`DELETE FROM tournament_meta WHERE key != 'phase'`).run();
 }
@@ -122,8 +144,35 @@ function getQualifyingMatches(groupNum) {
   return db.prepare(`SELECT token_a, token_b, winner FROM tournament_qualifying_matches WHERE group_num = ? ORDER BY id ASC`).all(groupNum);
 }
 
+// ── knockout bracket - one row per match, created lazily round by round ──
+function insertBracketMatch(round, slot, tokenA, tokenB) {
+  db.prepare(`INSERT OR IGNORE INTO tournament_bracket_matches (round, slot, token_a, token_b, status) VALUES (?, ?, ?, ?, 'pending')`)
+    .run(round, slot, tokenA, tokenB);
+}
+function getRoundMatches(round) {
+  return db.prepare(`SELECT * FROM tournament_bracket_matches WHERE round = ? ORDER BY slot ASC`).all(round);
+}
+function getAllBracketMatches() {
+  return db.prepare(`SELECT * FROM tournament_bracket_matches ORDER BY id ASC`).all();
+}
+function getCurrentBracketMatch() {
+  return db.prepare(`SELECT * FROM tournament_bracket_matches WHERE status = 'current' LIMIT 1`).get();
+}
+// Activating a match computes its result immediately (seed -> deterministic
+// winner, same "authoritative, not client-decided" principle as qualifying)
+// - status='current' only controls which slot the client treats as the one
+// to animate live right now, not whether the result already exists.
+function activateBracketMatch(round, slot, seed, scriptJson, winner) {
+  db.prepare(`UPDATE tournament_bracket_matches SET seed = ?, script = ?, winner = ?, status = 'current' WHERE round = ? AND slot = ?`)
+    .run(seed, scriptJson, winner, round, slot);
+}
+function completeCurrentBracketMatch() {
+  db.prepare(`UPDATE tournament_bracket_matches SET status = 'done' WHERE status = 'current'`).run();
+}
+
 module.exports = {
-  getMeta, setMeta, getPhase, closeRegistration, setQualifyingComplete, resetTournament,
+  getMeta, setMeta, getPhase, closeRegistration, setQualifyingComplete, setKnockoutStarted, setTournamentComplete, resetTournament,
   isEntered, enterTokens, getEntrants, getEntrantCount, getEntrantsForOwner,
   saveQualifyingResults, getGroupStandings, getTopEntrants, getQualifyingMatches,
+  insertBracketMatch, getRoundMatches, getAllBracketMatches, getCurrentBracketMatch, activateBracketMatch, completeCurrentBracketMatch,
 };

@@ -62,4 +62,90 @@ function simulateQualifying(entrantIds, seed) {
   return { seed, assignments, matches };
 }
 
-module.exports = { simulateQualifying, hashStr, mulberry32 };
+// Knockout-stage match simulation: a headless, seeded replay of tcg.html's
+// HP duel engine (coin toss -> attack/attack -> possible event -> status
+// ticks, repeat until someone hits 0). Every probability and damage formula
+// below is copied verbatim from the client's attack()/rollEvent()/
+// playEvent()/applyStatus()/tickStatus() (tcg.html) - this is the single
+// authoritative computation of who wins, done once, here, at match-activate
+// time. The client never rolls its own dice for a knockout match; it just
+// replays this exact log through the same animation code with the outcome
+// already decided, which is what makes "played and shown live" mean the
+// same result for every viewer instead of a per-browser random reenactment.
+//
+// Sides are 'a'/'b' (token A / token B) rather than 'you'/'opp' since
+// neither participant is "the viewer" for a spectated tournament match -
+// the client maps a->you, b->opp once, right before launching playback.
+function simulateKnockoutMatch(tokenA, tokenB, seed) {
+  seed = seed || Math.floor(Math.random() * 2 ** 31);
+  const rng = mulberry32(hashStr('AIBORGZ-KNOCKOUT:' + seed));
+
+  let hpA = 100, hpB = 100;
+  const fx = { a: { poison: 0 }, b: { poison: 0 } };
+  const first = rng() < 0.5 ? 'a' : 'b';
+  const order = first === 'a' ? ['a', 'b'] : ['b', 'a'];
+  const rounds = [];
+
+  const rollAttack = () => {
+    const miss = rng() < 0.15;
+    if (miss) return { miss: true, crit: false, dmg: 0 };
+    const crit = rng() < 0.15;
+    const dmg = crit ? 24 + Math.floor(rng() * 17) : 10 + Math.floor(rng() * 11);
+    return { miss: false, crit, dmg };
+  };
+  const dead = () => hpA <= 0 || hpB <= 0;
+
+  while (!dead()) {
+    const attacks = [];
+    for (const side of order) {
+      const r = rollAttack();
+      if (side === 'a') hpB = Math.max(0, hpB - r.dmg); else hpA = Math.max(0, hpA - r.dmg);
+      attacks.push({ side, miss: r.miss, crit: r.crit, dmg: r.dmg });
+      if (dead()) break;
+    }
+    if (dead()) { rounds.push({ attacks, event: null, ticks: [] }); break; }
+
+    let event = null;
+    if (rng() <= 0.24) {
+      const low = Math.min(hpA, hpB);
+      const pool = [];
+      if (low >= 1 && low <= 60) pool.push('gain');
+      if (low >= 40 && low <= 100) pool.push('drain');
+      if (!fx.a.poison || !fx.b.poison) pool.push('fx');
+      if (pool.length) {
+        const kind = pool[Math.floor(rng() * pool.length)];
+        if (kind === 'fx') {
+          const clean = ['a', 'b'].filter(s => !fx[s].poison);
+          const side = clean[Math.floor(rng() * clean.length)];
+          const roundsLeft = 2 + Math.floor(rng() * 3);
+          fx[side].poison = roundsLeft;
+          event = { kind: 'fx', side, rounds: roundsLeft };
+        } else {
+          const amtA = 8 + Math.floor(rng() * 13), amtB = 8 + Math.floor(rng() * 13);
+          if (kind === 'gain') { hpA = Math.min(100, hpA + amtA); hpB = Math.min(100, hpB + amtB); }
+          else { hpA = Math.max(1, hpA - amtA); hpB = Math.max(1, hpB - amtB); }
+          event = { kind, amtA, amtB };
+        }
+      }
+    }
+    if (dead()) { rounds.push({ attacks, event, ticks: [] }); break; }
+
+    const ticks = [];
+    for (const side of ['a', 'b']) {
+      if (!fx[side].poison) continue;
+      const dmg = 3 + Math.floor(rng() * 5);
+      if (side === 'a') hpA = Math.max(0, hpA - dmg); else hpB = Math.max(0, hpB - dmg);
+      fx[side].poison--;
+      ticks.push({ side, dmg, left: fx[side].poison });
+      if (dead()) break;
+    }
+    rounds.push({ attacks, event, ticks });
+    if (dead()) break;
+  }
+
+  const winnerSide = hpA <= 0 ? 'b' : 'a';
+  const winner = winnerSide === 'a' ? tokenA : tokenB;
+  return { seed, first, rounds, winnerSide, winner };
+}
+
+module.exports = { simulateQualifying, simulateKnockoutMatch, hashStr, mulberry32 };

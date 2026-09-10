@@ -1,7 +1,15 @@
 const express = require('express');
 const { ethers } = require('ethers');
 const tournamentDb = require('./tournament-database');
-const { simulateQualifying } = require('./tournament-sim');
+const { simulateQualifying, simulateKnockoutMatch } = require('./tournament-sim');
+
+// Standard 16-bracket seeding (keeps top seeds apart until later rounds) -
+// SEED_ORDER[2i]/[2i+1] are the two seed numbers paired in R16 slot i.
+// Cosmetic only here (qualifying rank carries no combat advantage - the
+// duel engine is 100% random), but it's what makes the bracket look like a
+// real seeded tournament instead of an arbitrary pairing.
+const BRACKET_SEED_ORDER = [1, 16, 8, 9, 4, 13, 5, 12, 2, 15, 7, 10, 3, 14, 6, 11];
+const BRACKET_ROUND_ORDER = ['r16', 'qf', 'sf', 'third', 'final'];
 
 const CONTRACT_ADDRESS = process.env.AIBORGZ_CONTRACT_ADDRESS || '0xc086de91ea6f1e736ccd9032799dab0f07d063ff';
 const RPC_URL = process.env.ROBINHOOD_RPC_URL || 'https://rpc.mainnet.chain.robinhood.com/';
@@ -146,6 +154,91 @@ router.post('/tournament/admin/reset', requireAdmin, (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
   tournamentDb.resetTournament();
   res.json({ ok: true, phase: tournamentDb.getPhase() });
+});
+
+router.get('/tournament/bracket', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  const matches = tournamentDb.getAllBracketMatches().map(m => ({
+    round: m.round, slot: m.slot, tokenA: m.token_a, tokenB: m.token_b,
+    winner: m.winner, status: m.status,
+    script: m.script ? JSON.parse(m.script) : null,
+  }));
+  res.json({ matches });
+});
+
+// Computes the match's result right now (seed -> simulateKnockoutMatch),
+// stores it, and marks it 'current' - the client isn't asked for a result,
+// it only ever replays one that already exists.
+function activateBracketMatch(round, slot, tokenA, tokenB) {
+  const result = simulateKnockoutMatch(tokenA, tokenB);
+  tournamentDb.activateBracketMatch(round, slot, String(result.seed), JSON.stringify({ first: result.first, rounds: result.rounds }), result.winner);
+  return { round, slot, tokenA, tokenB };
+}
+
+// Walks the fixed round order looking for the next thing to do: activate a
+// still-pending match in an already-generated round, or - once a round is
+// completely done - generate the next round (or, after 'sf', both 'third'
+// and 'final' at once, from the semifinal winners/losers) and keep looking.
+// Returns the newly-activated {round,slot,...}, or null once every round
+// through 'final' is done (tournament complete).
+function findAndActivateNext() {
+  for (const round of BRACKET_ROUND_ORDER) {
+    const matches = tournamentDb.getRoundMatches(round);
+    if (!matches.length) return null; // next round not generated yet and nothing upstream triggered it - shouldn't happen, stop rather than guess
+    const pending = matches.find(m => m.status === 'pending');
+    if (pending) return activateBracketMatch(round, pending.slot, pending.token_a, pending.token_b);
+    if (!matches.every(m => m.status === 'done')) return null; // one match still 'current' - caller should have completed it first
+
+    if (round === 'sf') {
+      if (!tournamentDb.getRoundMatches('third').length) {
+        const loser = m => (m.winner === m.token_a ? m.token_b : m.token_a);
+        tournamentDb.insertBracketMatch('third', 0, loser(matches[0]), loser(matches[1]));
+        tournamentDb.insertBracketMatch('final', 0, matches[0].winner, matches[1].winner);
+      }
+    } else if (round === 'r16' || round === 'qf') {
+      const next = round === 'r16' ? 'qf' : 'sf';
+      if (!tournamentDb.getRoundMatches(next).length) {
+        for (let i = 0; i * 2 + 1 < matches.length; i++) {
+          tournamentDb.insertBracketMatch(next, i, matches[i * 2].winner, matches[i * 2 + 1].winner);
+        }
+      }
+    }
+    // round fully done with nothing new to generate ('third', or 'final') - keep scanning forward
+  }
+  return null; // every round including 'final' is done
+}
+
+// One button, one step: finish whatever's currently live (if anything),
+// then start the next match - seeding the R16 bracket from the qualifying
+// Top 16 on the very first call. "One battle at a time" end to end.
+router.post('/tournament/admin/advance-knockout', requireAdmin, (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  try {
+    const phase = tournamentDb.getPhase();
+    if (phase === 'qualifying') {
+      const top16 = tournamentDb.getTopEntrants(16);
+      if (top16.length < 16) {
+        return res.status(400).json({ error: `Need 16 qualified entrants to start the knockout stage (currently ${top16.length}).` });
+      }
+      for (let i = 0; i < 8; i++) {
+        const a = top16[BRACKET_SEED_ORDER[i * 2] - 1].token_id;
+        const b = top16[BRACKET_SEED_ORDER[i * 2 + 1] - 1].token_id;
+        tournamentDb.insertBracketMatch('r16', i, a, b);
+      }
+      tournamentDb.setKnockoutStarted();
+    } else if (phase === 'knockout') {
+      if (tournamentDb.getCurrentBracketMatch()) tournamentDb.completeCurrentBracketMatch();
+    } else {
+      return res.status(400).json({ error: 'Tournament is not in the qualifying or knockout phase.' });
+    }
+
+    const activated = findAndActivateNext();
+    if (!activated) tournamentDb.setTournamentComplete();
+    res.json({ ok: true, phase: tournamentDb.getPhase(), activated: activated || null });
+  } catch (err) {
+    console.error('advance-knockout error:', err.message);
+    res.status(500).json({ error: 'Could not advance the bracket right now.' });
+  }
 });
 
 module.exports = { router };
