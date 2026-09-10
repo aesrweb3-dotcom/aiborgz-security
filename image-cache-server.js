@@ -223,4 +223,32 @@ router.post('/image/admin/cleanup-old-cache', requireAdmin, async (req, res) => 
   }
 });
 
+// Emergency relief valve for the current full volume - deletes the oldest
+// cached images (by cache-write time) until at least targetFreeBytes worth
+// has been freed, so the SQLite databases sharing this disk can write
+// again right now. Deliberately partial, not a full wipe: leaves whatever
+// cache it doesn't need to touch still warm, rather than forcing every
+// image back through a cold IPFS fetch at once.
+router.post('/image/admin/trim-cache', requireAdmin, async (req, res) => {
+  const targetFreeBytes = (req.body && req.body.targetFreeBytes) || 2 * 1024 * 1024 * 1024; // default: free at least 2GB
+  try {
+    const files = await fsp.readdir(CACHE_DIR);
+    const withStats = await Promise.all(files.map(async f => {
+      const st = await fsp.stat(path.join(CACHE_DIR, f));
+      return { file: f, size: st.size, mtime: st.mtimeMs };
+    }));
+    withStats.sort((a, b) => a.mtime - b.mtime); // oldest cached first
+    let freed = 0, deleted = 0;
+    for (const entry of withStats) {
+      if (freed >= targetFreeBytes) break;
+      await fsp.unlink(path.join(CACHE_DIR, entry.file));
+      freed += entry.size;
+      deleted++;
+    }
+    res.json({ totalBefore: files.length, deleted, remaining: files.length - deleted, freedBytes: freed, freedMB: Math.round(freed / 1024 / 1024) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = { router };
