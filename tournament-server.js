@@ -11,7 +11,29 @@ const contract = new ethers.Contract(CONTRACT_ADDRESS, ['function ownerOf(uint25
 
 const router = express.Router();
 
+// The GET routes elsewhere in this app (units-index, image-cache) never
+// needed CORS preflight handling because plain GETs with no custom headers
+// are "simple requests" under the Fetch spec. POSTing JSON isn't - the
+// browser sends an OPTIONS preflight first, and with nothing here to answer
+// it, the real request never goes out at all (fails client-side as a fetch
+// error, not even a visible 404). tcg.html and admin.html both call these
+// POST routes cross-origin (aiborgz.com -> this Railway service), so this
+// is required, not optional, for either of them to work.
+router.options('/tournament/enter', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'POST');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+router.options('/tournament/admin/:action', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'POST');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Key');
+  res.sendStatus(204);
+});
+
 function requireAdmin(req, res, next) {
+  res.header('Access-Control-Allow-Origin', '*');
   if (!ADMIN_KEY) return res.status(503).json({ error: 'Tournament admin actions are not configured (TOURNAMENT_ADMIN_KEY unset).' });
   if (req.get('x-admin-key') !== ADMIN_KEY) return res.status(401).json({ error: 'Invalid admin key.' });
   next();
