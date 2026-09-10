@@ -1,7 +1,20 @@
 const express = require('express');
 const fs = require('fs');
+const fsp = require('fs/promises');
 const path = require('path');
 const { ethers } = require('ethers');
+
+// Reuses the tournament admin key rather than introducing a second secret -
+// this is a one-time migration utility (moving the cache to its own volume
+// after it filled the shared one and starved the SQLite databases of write
+// space), not a permanent feature, so a dedicated key isn't worth adding.
+const ADMIN_KEY = process.env.TOURNAMENT_ADMIN_KEY;
+function requireAdmin(req, res, next) {
+  res.header('Access-Control-Allow-Origin', '*');
+  if (!ADMIN_KEY) return res.status(503).json({ error: 'Admin actions are not configured.' });
+  if (req.get('x-admin-key') !== ADMIN_KEY) return res.status(401).json({ error: 'Invalid admin key.' });
+  next();
+}
 
 const CONTRACT_ADDRESS = process.env.AIBORGZ_CONTRACT_ADDRESS || '0xc086de91ea6f1e736ccd9032799dab0f07d063ff';
 const RPC_URL = process.env.ROBINHOOD_RPC_URL || 'https://rpc.mainnet.chain.robinhood.com/';
@@ -132,6 +145,81 @@ router.get('/image/:tokenId', async (req, res) => {
     delete inflight[tokenId];
     console.error('Image cache fetch failed for token', tokenId, ':', e.message);
     res.status(502).json({ error: 'Could not fetch image right now' });
+  }
+});
+
+// One-time migration to a separate volume, run once after the shared /data
+// volume filled up (this cache was ~92% of it). Copies only - never touches
+// the source files, so it's safe to re-run if it's interrupted partway
+// (already-copied, matching-size files are skipped, not re-fetched).
+// Async + bounded concurrency so copying ~4.5GB doesn't block the rest of
+// this process (Discord bot, tournament API) for the whole duration.
+router.options('/image/admin/:action', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'POST');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Key');
+  res.sendStatus(204);
+});
+
+async function copyWithConcurrency(files, srcDir, destDir, concurrency) {
+  let copied = 0, skipped = 0;
+  const failed = [];
+  let idx = 0;
+  async function worker() {
+    while (idx < files.length) {
+      const f = files[idx++];
+      const src = path.join(srcDir, f);
+      const dst = path.join(destDir, f);
+      try {
+        const srcStat = await fsp.stat(src);
+        try {
+          const dstStat = await fsp.stat(dst);
+          if (dstStat.size === srcStat.size) { skipped++; continue; }
+        } catch (e) { /* doesn't exist yet at destination - fall through to copy */ }
+        await fsp.copyFile(src, dst);
+        copied++;
+      } catch (e) { failed.push({ file: f, error: e.message }); }
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  return { copied, skipped, failed };
+}
+
+router.post('/image/admin/migrate-cache', requireAdmin, async (req, res) => {
+  const destDir = req.body && req.body.destDir;
+  if (!destDir) return res.status(400).json({ error: 'destDir required' });
+  try {
+    await fsp.mkdir(destDir, { recursive: true });
+    const files = await fsp.readdir(CACHE_DIR);
+    const result = await copyWithConcurrency(files, CACHE_DIR, destDir, 8);
+    res.json({ total: files.length, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Only deletes a source file once the destination copy is confirmed present
+// with a matching size - never deletes on a hunch. Run this only after
+// verifying /image/admin/migrate-cache's result looks complete.
+router.post('/image/admin/cleanup-old-cache', requireAdmin, async (req, res) => {
+  const destDir = req.body && req.body.destDir;
+  if (!destDir) return res.status(400).json({ error: 'destDir required' });
+  try {
+    const files = await fsp.readdir(CACHE_DIR);
+    let deleted = 0;
+    const skipped = [];
+    for (const f of files) {
+      const src = path.join(CACHE_DIR, f);
+      const dst = path.join(destDir, f);
+      try {
+        const [srcStat, dstStat] = await Promise.all([fsp.stat(src), fsp.stat(dst)]);
+        if (srcStat.size === dstStat.size) { await fsp.unlink(src); deleted++; }
+        else skipped.push({ file: f, reason: 'size mismatch - not deleted' });
+      } catch (e) { skipped.push({ file: f, reason: e.message }); }
+    }
+    res.json({ total: files.length, deleted, skippedCount: skipped.length, skipped: skipped.slice(0, 20) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
