@@ -1,5 +1,9 @@
 const express = require('express');
-const { getOwnedTokenIds } = require('./units-index');
+const { ethers } = require('ethers');
+const { getOwnedTokenIds, getIndexerStatus } = require('./units-index');
+
+const RPC_URL = process.env.ROBINHOOD_RPC_URL || 'https://rpc.mainnet.chain.robinhood.com/';
+const healthProvider = new ethers.JsonRpcProvider(RPC_URL);
 
 // Exported as a router and mounted onto the Rumble OAuth server's existing
 // app/port, same reasoning as wallet-verify-server.js - Railway only exposes
@@ -8,9 +12,17 @@ const router = express.Router();
 
 // Registered before /units/:address - Express matches in order, and a
 // wildcard segment would otherwise swallow this (address="health") first.
-router.get('/units/health', (req, res) => {
+router.get('/units/health', async (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.json({ status: 'ok' });
+  const status = getIndexerStatus();
+  let currentBlock = null;
+  try { currentBlock = await healthProvider.getBlockNumber(); } catch (e) { /* report what we have without it */ }
+  res.json({
+    status: 'ok',
+    ...status,
+    currentBlock,
+    blocksBehind: currentBlock != null ? currentBlock - status.lastSyncedBlock : null,
+  });
 });
 
 // Called cross-origin from aiborgz.com (a different origin than this

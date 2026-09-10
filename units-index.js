@@ -46,6 +46,13 @@ function getOwnedTokenIds(address) {
   const rows = db.prepare(`SELECT token_id FROM token_owners WHERE owner_address = ?`).all(address.toLowerCase());
   return rows.map(r => r.token_id).sort((a, b) => a - b);
 }
+function getIndexerStatus() {
+  return {
+    lastSyncedBlock: parseInt(getState('last_synced_block') || '0', 10),
+    indexedTokenCount: db.prepare(`SELECT COUNT(*) AS n FROM token_owners`).get().n,
+    syncing,
+  };
+}
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -130,4 +137,4 @@ function startUnitsIndexer() {
   setInterval(syncFromChain, 60 * 1000); // then stay current
 }
 
-module.exports = { startUnitsIndexer, syncFromChain, getOwnedTokenIds };
+module.exports = { startUnitsIndexer, syncFromChain, getOwnedTokenIds, getIndexerStatus };
