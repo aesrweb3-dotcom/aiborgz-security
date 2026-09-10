@@ -1,6 +1,7 @@
 const express = require('express');
 const { ethers } = require('ethers');
 const tournamentDb = require('./tournament-database');
+const { simulateQualifying } = require('./tournament-sim');
 
 const CONTRACT_ADDRESS = process.env.AIBORGZ_CONTRACT_ADDRESS || '0xc086de91ea6f1e736ccd9032799dab0f07d063ff';
 const RPC_URL = process.env.ROBINHOOD_RPC_URL || 'https://rpc.mainnet.chain.robinhood.com/';
@@ -102,11 +103,43 @@ router.post('/tournament/enter', async (req, res) => {
   }
 });
 
+// Closes registration AND runs the full qualifying simulation in one step -
+// there's no real reason to make an admin do two separate actions when the
+// computation itself is instant (a few thousand coin-flips, not an external
+// call), and a "closed but not yet computed" in-between state would just be
+// a confusing thing to show holders for no benefit.
 router.post('/tournament/admin/close-registration', requireAdmin, (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
   if (tournamentDb.getPhase() !== 'registration') return res.status(400).json({ error: 'Registration is not currently open.' });
   tournamentDb.closeRegistration();
+
+  const entrantIds = tournamentDb.getEntrants().map(e => e.token_id);
+  if (entrantIds.length) {
+    const { seed, assignments, matches } = simulateQualifying(entrantIds);
+    tournamentDb.saveQualifyingResults(assignments, matches);
+    tournamentDb.setQualifyingComplete(seed);
+  } else {
+    tournamentDb.setQualifyingComplete(null); // nothing entered - still move the phase along rather than get stuck
+  }
   res.json({ ok: true, phase: tournamentDb.getPhase(), entrantCount: tournamentDb.getEntrantCount() });
+});
+
+router.get('/tournament/groups', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  const groups = [1, 2, 3, 4].map(n => ({ groupNum: n, standings: tournamentDb.getGroupStandings(n) }));
+  res.json({ groups });
+});
+
+router.get('/tournament/groups/:num/matches', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  const num = parseInt(req.params.num, 10);
+  if (![1, 2, 3, 4].includes(num)) return res.status(400).json({ error: 'group must be 1-4' });
+  res.json({ matches: tournamentDb.getQualifyingMatches(num) });
+});
+
+router.get('/tournament/top16', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.json({ top: tournamentDb.getTopEntrants(16) });
 });
 
 router.post('/tournament/admin/reset', requireAdmin, (req, res) => {
